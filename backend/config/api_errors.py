@@ -23,7 +23,17 @@ def exception_handler(exc, context):
         return error_response(
             "VALIDATION_ERROR", "Dados inválidos.", status.HTTP_400_BAD_REQUEST, fields=fields
         )
+    if isinstance(exc, exceptions.ParseError):
+        return error_response(
+            "VALIDATION_ERROR", "Corpo da requisição ilegível.", 400, fields={"body": [str(exc)]}
+        )
     if response.status_code == status.HTTP_403_FORBIDDEN:
+        if str(getattr(exc, "detail", "")).startswith("CSRF Failed"):
+            return error_response(
+                "FORBIDDEN",
+                "Token CSRF ausente ou inválido: chame GET /api/auth/csrf e envie X-CSRFToken.",
+                403,
+            )
         return error_response("FORBIDDEN", "Você não tem permissão para isso.", 403)
     if response.status_code == status.HTTP_404_NOT_FOUND:
         return error_response("NOT_FOUND", "Recurso não encontrado.", 404)

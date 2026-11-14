@@ -59,8 +59,15 @@ USE_I18N = False
 
 # Auth: sessão em cookie HttpOnly + CSRF, expiração deslizante (RF02, D2).
 AUTH_USER_MODEL = "accounts.User"
+_PV = "django.contrib.auth.password_validation."
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {
+        "NAME": _PV + "UserAttributeSimilarityValidator",
+        "OPTIONS": {"user_attributes": ("email", "display_name")},
+    },
+    {"NAME": _PV + "MinimumLengthValidator"},  # 8 caracteres
+    {"NAME": _PV + "CommonPasswordValidator"},
+    {"NAME": _PV + "NumericPasswordValidator"},
 ]
 SESSION_COOKIE_AGE = env_int("SESSION_COOKIE_AGE_SECONDS", 3600)
 SESSION_SAVE_EVERY_REQUEST = True  # renova a cada uso
@@ -70,7 +77,7 @@ CSRF_COOKIE_HTTPONLY = False  # o front lê o cookie para mandar o X-CSRFToken
 CSRF_COOKIE_SAMESITE = "Lax"
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["config.authentication.CsrfSessionAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "config.api_errors.exception_handler",
