@@ -41,6 +41,8 @@ def place_bid(
     5. Aceito: AuctionParticipant (número = próximo do leilão), Bid, atualizar
        highest_bid_cents / leader / bid_count, prorrogar com `rules.extension.extended_ends_at`.
     6. Gravar IdempotencyRecord para 201 E para 409.
-    7. `transaction.on_commit(lambda: send_to_room(...))` com o evento `bid_accepted`.
+    7. `transaction.on_commit(lambda: send_to_room(...))` com o evento `bid_accepted`
+       ({bid, auction, extended, previous_leader_number}); `previous_leader_number` é o
+       número do líder ANTES deste lance (None no 1º lance). Leia-o antes de trocar o líder.
     """
     raise NotImplementedError("TODO(Danilo): transação do lance (RF10-RF15)")

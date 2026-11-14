@@ -92,6 +92,21 @@ def test_broadcast_so_depois_do_commit(running, ana, sent, django_capture_on_com
 
 
 @pytest.mark.django_db
+def test_bid_accepted_traz_o_lider_anterior(
+    running, ana, bruno, sent, django_capture_on_commit_callbacks
+):
+    """Contrato v1.3: `previous_leader_number` é quem acabou de ser superado (base do RF26)."""
+    with django_capture_on_commit_callbacks(execute=True):
+        bid(ana, running, 10_000)  # Ana vira #1
+        bid(bruno, running, 10_500)  # Bruno vira #2 e supera a #1
+        bid(ana, running, 11_000)  # Ana volta e supera o #2
+
+    previous = [m["message"]["previous_leader_number"] for m in sent]
+    assert previous == [None, 1, 2]
+    assert [m["message"]["auction"]["leader_number"] for m in sent] == [1, 2, 1]
+
+
+@pytest.mark.django_db
 def test_lance_recusado_nao_gera_broadcast(
     running, seller, sent, django_capture_on_commit_callbacks
 ):
