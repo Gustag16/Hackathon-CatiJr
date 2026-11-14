@@ -1,6 +1,6 @@
-# Contrato da API e do WebSocket — v1.3 (final)
+# Contrato da API e do WebSocket — v1.3.1 (final)
 
-v1.3 de 14/11/2026, **congelada**: todas as decisões da seção 6 estão fechadas. O que mudou desde a v0 está nas seções 7 a 10.
+v1.3.1 de 14/11/2026, **congelada para o Núcleo**: todas as decisões da seção 6 estão fechadas. O que mudou desde a v0 está nas seções 7 a 11.
 Daqui em diante, mudar este arquivo exige o OK dos três (Danilo, Amadeu, Bortoleto) no grupo ANTES de mexer no código.
 
 ## 1. Convenções
@@ -126,7 +126,7 @@ Todo usuário logado pode anunciar e dar lance (RF03). Não existe administrador
   `current_price_cents` = preço inicial) e "Atual" caso contrário. Sem líder no cartão (isso é da sala, RF04).
 - A tela refaz a consulta a cada 30 s; a listagem não usa WebSocket.
 
-Nível 2 (reservado, ainda sem formato): `PATCH /api/auctions/{id}` (RF23), `POST /api/auctions/{id}/relist`
+Nível 2 (reservado; os formatos entram numa v1.4, com o OK dos três): `PATCH /api/auctions/{id}` (RF23), `POST /api/auctions/{id}/relist`
 (RF28; cria um novo Leilão para o MESMO Item), `GET /api/me/participations` (RF27),
 `GET /api/users?q=` e `GET /api/users/{id}` (RF22).
 
@@ -204,7 +204,6 @@ Todas as mensagens: `{ "type": "...", ..., "server_time": "..." }`
 | `auction_cancelled` | `auction: AuctionState` | comitente cancelou |
 | `error` | `code`, `message` | mensagem inválida do cliente |
 | `presence` | `participants`, `spectators` | (Nível 2, RF25) |
-| `outbid` | `auction_id`, `your_bid_cents`, `new_price_cents` | só para quem foi superado (Nível 2, RF26) |
 
 Prorrogação: com `extended = true` o `ends_at` novo vem em `auction`; o cronômetro só recalcula com o novo `ends_at`.
 
@@ -272,3 +271,8 @@ Enquanto desconectado, o front mostra "reconectando…" e desabilita o botão de
 - `bid_accepted` ganhou `previous_leader_number` (base do aviso "superado", RF26, sem expor ids).
 - Ponte backend → consumer fixada: grupo `auction_<uuid>`, mensagem `room.event`, só em `on_commit`.
 - D2, D3, D6 e D7 fechadas. Contrato congelado: mudança só com o OK dos três.
+
+## 11. O que mudou da v1.3 para a v1.3.1
+
+- Removido o evento `outbid`: o aviso "seu lance foi superado" (RF26) sai de `previous_leader_number` no `bid_accepted`.
+- Núcleo congelado; os formatos dos endpoints do Nível 2 ficam para a v1.4.

@@ -58,7 +58,8 @@ Toda transição passa por UMA função central; nenhum outro código altera `st
 - Dinheiro: inteiro em CENTAVOS (`*_cents`) no banco e na API, inclusive na tabela de
   incrementos do RF14. Nunca float, nunca `Decimal` na API. (RF19; D1 confirmado)
 - Tempo: UTC no banco (`USE_TZ=True`); o horário válido é SEMPRE o do servidor
-  (`timezone.now()`). O contador do navegador é só visual. (RF16, RF19)
+  lido por `auctions.services.clock.now()` (nunca `timezone.now()` direto nos serviços: os
+  testes trocam esse relógio). O contador do navegador é só visual. (RF16, RF19)
 - Lance: `transaction.atomic()` + `select_for_update()` na linha do leilão, validando
   NO MOMENTO do processamento, lendo `now` DEPOIS da trava (lance mínimo vigente agora, não o da tela): sessão
   válida; leilão `running` e `now < ends_at`; autor não é o comitente nem o líder;

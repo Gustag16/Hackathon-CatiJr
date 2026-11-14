@@ -7,12 +7,14 @@ custo, quem é afetado. Marque ✅/❌ e registre as aceitas na tabela de decis�
 ## Contrato (`docs/contract.md`)
 
 ### 1. Documentar `GET /api/health`
+**Status: ✅ aceita (contrato v1.3)**
 - **O quê**: `200 {status:"ok", db:true, redis:true, server_time}` ou `503 {status:"degraded", ...}`. Sem login.
 - **Por quê**: healthcheck do compose, `make doctor` e diagnóstico na demo. Já existe no backend
   (`backend/config/health.py`); só falta constar no contrato.
 - **Custo**: uma linha na seção 3. **Afeta**: Bortoleto (healthcheck); ninguém mais.
 
 ### 2. Combinar a ponte backend → consumer do WebSocket
+**Status: ✅ aceita (contrato v1.3)**
 - **O quê**: o backend publica no grupo `auction_<uuid>` a mensagem interna
   `{"type": "room.event", "message": <evento do contrato, seção 5>}`. O consumer entra nesse grupo
   e implementa `async def room_event(self, event): await self.send_json(event["message"])`.
@@ -22,6 +24,7 @@ custo, quem é afetado. Marque ✅/❌ e registre as aceitas na tabela de decis�
 - **Custo**: 5 linhas no consumer. **Afeta**: Bortoleto, Danilo.
 
 ### 3. Aceitar frações de segundo nas datas
+**Status: ✅ aceita (contrato v1.3)**
 - **O quê**: o DRF serializa `2026-11-14T19:02:27.582992Z`; o exemplo do contrato mostra sem fração.
   Proposta: o contrato dizer "pode trazer fração de segundo".
 - **Por quê**: `new Date(...)` lê os dois formatos; truncar no servidor é trabalho sem ganho, e a
@@ -29,6 +32,7 @@ custo, quem é afetado. Marque ✅/❌ e registre as aceitas na tabela de decis�
 - **Custo**: zero se o front usa `new Date()`. **Afeta**: Amadeu (não comparar datas como texto).
 
 ### 4. `outbid` do Nível 2 sem expor quem é quem
+**Status: ✅ aceita (contrato v1.3; `outbid` removido na v1.3.1)**
 - **O quê**: quando chegar a hora do RF26, o evento "só para quem foi superado" exige que o consumer
   saiba o usuário do líder anterior. Sugestão: o backend publica `previous_leader_number` em
   `bid_accepted` e o front compara com `you.participant_number` (sem evento novo).
@@ -82,12 +86,14 @@ custo, quem é afetado. Marque ✅/❌ e registre as aceitas na tabela de decis�
 ## `AGENTS.md` / raiz
 
 ### 11. Apontar os comandos para o Makefile
+**Status: ✅ aceita (AGENTS)**
 - **O quê**: na seção "Comandos", trocar a lista por `make db | migrate | backend | worker | seed |
   test | test-todo | lint | doctor | smoke | stress` (os comandos de hoje continuam valendo).
 - **Por quê**: um jeito só de rodar, para humanos e assistentes de IA.
 - **Custo**: editar 8 linhas. **Afeta**: os três.
 
 ### 12. Regra de relógio para o código do backend
+**Status: ✅ aceita (contrato v1.3 + AGENTS)**
 - **O quê**: acrescentar às invariantes: "serviços leem a hora por `auctions.services.clock.now()`,
   chamado DEPOIS de obter a trava".
 - **Por quê**: se a hora for lida antes do `select_for_update`, um lance que esperou na fila pode
@@ -95,6 +101,7 @@ custo, quem é afetado. Marque ✅/❌ e registre as aceitas na tabela de decis�
 - **Custo**: uma linha. **Afeta**: Danilo.
 
 ### 13. Usuários do GitHub no CODEOWNERS
+**Status: ✅ feita**
 - **O quê**: preencher `@amadeu-TODO` e `@bortoleto-TODO` em `.github/CODEOWNERS`.
 - **Por quê**: enquanto forem inválidos, o GitHub ignora essas linhas.
 - **Custo**: 1 min. **Afeta**: Amadeu, Bortoleto.
