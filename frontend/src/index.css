@@ -1,3 +1,250 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.984 0.003 247.858);
+  --foreground: oklch(0.129 0.042 264.695);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.129 0.042 264.695);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.129 0.042 264.695);
+  --primary: oklch(0.769 0.188 70.08);
+  --primary-foreground: oklch(0.208 0.042 265.755);
+  --secondary: oklch(0.968 0.007 247.896);
+  --secondary-foreground: oklch(0.208 0.042 265.755);
+  --muted: oklch(0.968 0.007 247.896);
+  --muted-foreground: oklch(0.554 0.046 257.417);
+  --accent: oklch(0.968 0.007 247.896);
+  --accent-foreground: oklch(0.208 0.042 265.755);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+  --border: oklch(0.929 0.013 255.508);
+  --input: oklch(0.929 0.013 255.508);
+  --ring: oklch(0.704 0.04 256.788);
+  --header: oklch(0.208 0.042 265.755);
+  --header-foreground: oklch(0.984 0.003 247.858);
+  --success: oklch(0.55 0.15 162);
+  --success-soft: oklch(0.96 0.025 162);
+  --scheduled: oklch(0.55 0.18 277);
+  --scheduled-soft: oklch(0.96 0.02 277);
+  --warning-soft: oklch(0.98 0.025 85);
+  --shadow-card: 0 4px 18px oklch(0.208 0.042 265.755 / 0.04);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    margin: 0;
+  }
+}
+
+.page-width {
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-inline: 32px;
+}
+
+.app-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 180ms, transform 180ms;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.app-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.app-button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.button-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--primary) 85%, var(--card));
+}
+
+.button-outline {
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.button-ghost {
+  background: transparent;
+  color: inherit;
+}
+
+.button-danger {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+.auction-card {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.auction-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px color-mix(in oklch, var(--header) 9%, transparent);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 6px 9px;
+  border-radius: 4px;
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.status-scheduled {
+  background: var(--scheduled-soft);
+  color: var(--scheduled);
+}
+
+.status-sold {
+  background: var(--warning-soft);
+  color: var(--primary-foreground);
+}
+
+.status-ended_no_bids,
+.status-cancelled {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.status-cancelled {
+  color: var(--destructive);
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--success) 12%, transparent);
+}
+
+.urgent {
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 5%, var(--card));
+  animation: urgency 2s ease-in-out infinite;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  padding: 12px 14px;
+  background: var(--card);
+  font-size: 14px;
+}
+
+.field.pl-10 {
+  padding-left: 40px;
+}
+
+@media (min-width: 640px) {
+  select.field.sm\:w-52 {
+    width: 208px;
+  }
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.form-panel {
+  max-width: 470px;
+  margin: 64px auto;
+  padding: 36px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.tab {
+  display: inline-flex;
+  gap: 9px;
+  align-items: center;
+  padding: 18px 2px;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+
+.tab.active {
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+
+@keyframes urgency {
+  50% {
+    opacity: 0.65;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-width {
+    padding-inline: 18px;
+  }
+  .form-panel {
+    margin: 32px 18px;
+    padding: 24px;
+  }
+  .app-button {
+    padding: 10px 12px;
+  }
+  .listing-intro {
+    padding-block: 28px;
+  }
+  .listing-title {
+    font-size: 28px;
+  }
+}
