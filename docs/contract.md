@@ -1,14 +1,16 @@
-# Contrato da API e do WebSocket — v1.2
+# Contrato da API e do WebSocket — v1.3 (final)
 
-v1.2 de 14/11/2026. O que mudou desde a v0 está nas seções 7 a 9. Decisões e seu status, na seção 6.
-Qualquer mudança neste arquivo é avisada no grupo ANTES de mexer no código.
+v1.3 de 14/11/2026, **congelada**: todas as decisões da seção 6 estão fechadas. O que mudou desde a v0 está nas seções 7 a 10.
+Daqui em diante, mudar este arquivo exige o OK dos três (Danilo, Amadeu, Bortoleto) no grupo ANTES de mexer no código.
 
 ## 1. Convenções
 
 - REST em `/api`, WebSocket em `/ws`, fotos em `/media`. Tudo na mesma origem (Caddy na 8080). Sem CORS.
 - JSON UTF-8, campos em `snake_case`, IDs em UUID (string).
 - **Dinheiro**: inteiro em centavos, campo termina em `_cents` (R$ 12,50 = `1250`). Nunca float. (D1, confirmado)
-- **Datas**: ISO 8601 UTC com `Z` (`2026-11-14T18:30:00Z`). O front converte para o fuso de quem vê.
+- **Datas**: ISO 8601 UTC com `Z` (`2026-11-14T18:30:00Z`). Podem vir **com fração de segundo**
+  (`2026-11-14T18:30:00.582992Z`): o front deve ler com `new Date(...)` e nunca comparar datas como texto.
+  O front converte para o fuso de quem vê.
 - **Sincronia de tempo**: todo objeto de estado de leilão traz `server_time`. O front calcula
   `offset = server_time - Date.now()` ao receber e mostra o cronômetro com `ends_at - (Date.now() + offset)`.
   O servidor NUNCA envia "ticks" de contagem regressiva. O contador é só visual (RF16).
@@ -77,6 +79,13 @@ O detalhe público NÃO traz líder nem lances recentes: isso é conteúdo da sa
 Fotos: `url` relativa (`/media/...`), servida pelo Caddy direto do disco da VM.
 
 ## 3. REST
+
+### Saúde
+| Método | Caminho | Auth | Resposta |
+|---|---|---|---|
+| GET | `/api/health` | não | `200 { status: "ok", db: true, redis: true, server_time }` ou `503 { status: "degraded", db, redis, server_time }` |
+
+Usado pelo healthcheck do compose, pelo `make doctor` e para mostrar na demo que o sistema voltou após reinício.
 
 ### Configuração
 | Método | Caminho | Auth | Resposta |
@@ -153,7 +162,8 @@ Todo lance recusado informa o motivo e o lance mínimo atual (RF10). Lance é ir
 5. limite de frequência (429, Nível 2)
 6. `AUCTION_NOT_RUNNING` / `AUCTION_ENDED` → 7. `IS_SELLER` → 8. `IS_LEADER` → 9. `BID_TOO_LOW`
 
-**Tempo**: o lance só é válido se `now < ends_at`, com `now` = relógio do servidor dentro da transação.
+**Tempo**: o lance só é válido se `now < ends_at`, com `now` = relógio do servidor lido **depois** de obter a trava
+da linha do leilão (nunca antes: quem espera a trava não pode validar com um relógio velho).
 O worker fecha quando `now >= ends_at`. Assim não há lacuna nem sobreposição.
 
 **Prorrogação (RF15)**: se, no lance aceito, `ends_at - now < 2 min`, então
@@ -188,7 +198,7 @@ Todas as mensagens: `{ "type": "...", ..., "server_time": "..." }`
 | type | campos | quando |
 |---|---|---|
 | `snapshot` | `auction: AuctionState`, `you: { participant_number }`, `recent_bids: Bid[]` (até 10, mais novo primeiro), `result` (se finalizado) | ao conectar e após `resync` |
-| `bid_accepted` | `bid: Bid`, `auction: AuctionState`, `extended: bool` | após o COMMIT de um lance (nunca antes) |
+| `bid_accepted` | `bid: Bid`, `auction: AuctionState`, `extended: bool`, `previous_leader_number: int \| null` | após o COMMIT de um lance (nunca antes) |
 | `auction_started` | `auction: AuctionState` | worker abriu o leilão |
 | `auction_finished` | `auction: AuctionState`, `result: {status, winner_label, final_price_cents}` | fechou (`sold` ou `ended_no_bids`) |
 | `auction_cancelled` | `auction: AuctionState` | comitente cancelou |
@@ -197,6 +207,16 @@ Todas as mensagens: `{ "type": "...", ..., "server_time": "..." }`
 | `outbid` | `auction_id`, `your_bid_cents`, `new_price_cents` | só para quem foi superado (Nível 2, RF26) |
 
 Prorrogação: com `extended = true` o `ends_at` novo vem em `auction`; o cronômetro só recalcula com o novo `ends_at`.
+
+`previous_leader_number` é o número de quem acabou de ser superado (`null` no 1º lance). O front compara com
+`you.participant_number` para avisar "seu lance foi superado" (RF26) sem evento novo e sem expor ids de usuário.
+
+### Ponte backend → consumer (Danilo ↔ Bortoleto)
+O backend publica no grupo `auction_<uuid>` do Channels a mensagem interna
+`{"type": "room.event", "message": <objeto desta seção>}`, sempre dentro de `transaction.on_commit`.
+O consumer entra nesse grupo ao conectar e repassa com
+`async def room_event(self, event): await self.send_json(event["message"])`.
+O nome do grupo e do evento vivem em `backend/auctions/services/broadcast.py`; ninguém inventa outro.
 
 ### Cliente → servidor
 | type | campos | efeito |
@@ -216,12 +236,12 @@ Enquanto desconectado, o front mostra "reconectando…" e desabilita o botão de
 | # | Decisão | Status |
 |---|---|---|
 | D1 | Dinheiro em centavos inteiros | **Confirmado** |
-| D2 | Sessão Django + CSRF, 1 h deslizante | Proposto |
-| D3 | "Estar na sala" (RF10) = sessão válida; a sala exige login. Sem presença por WS | Proposto |
+| D2 | Sessão Django + CSRF, 1 h deslizante | **Fechado (v1.3)** |
+| D3 | "Estar na sala" (RF10) = sessão válida; a sala exige login. Sem presença por WS | **Fechado (v1.3)** |
 | D4 | `leader_label` = nome mascarado + nº do participante no leilão (ex.: `Dan*** #3`); a API não expõe o id do líder | **Confirmado** |
 | D5 | Fotos no disco local da VM (adendo da organização ao PDF), volume Docker servido pelo Caddy, só o caminho no banco | **Confirmado** |
-| D6 | Limites: nome ≤ 100, descrição ≤ 2000, 3–8 fotos jpeg/png/webp ≤ 5 MB, duração ≥ 60 s, início ≥ 30 s à frente; categorias: Automóveis, Móveis, Eletrônicos, Arte, Hobbies e música, Colecionáveis, Outros | Proposto |
-| D7 | Listagem (RF20): grade de cartões, abas Em andamento/Agendados/Todos, ordem por término (andamento) e início (agendados), 12 por página numerada, atualiza a cada 30 s | Proposto |
+| D6 | Limites: nome ≤ 100, descrição ≤ 2000, 3–8 fotos jpeg/png/webp ≤ 5 MB, duração ≥ 60 s, início ≥ 30 s à frente; categorias: Automóveis, Móveis, Eletrônicos, Arte, Hobbies e música, Colecionáveis, Outros | **Fechado (v1.3)** |
+| D7 | Listagem (RF20): grade de cartões, abas Em andamento/Agendados/Todos, ordem por término (andamento) e início (agendados), 12 por página numerada, atualiza a cada 30 s | **Fechado (v1.3)** |
 
 ## 7. O que mudou da v0 para a v1
 
@@ -243,3 +263,12 @@ Enquanto desconectado, o front mostra "reconectando…" e desabilita o botão de
 
 - D4 decidido: rótulo = nome mascarado + nº do participante por leilão (`Dan*** #3`). `leader_id` saiu de `AuctionState` (ninguém é identificável entre leilões); entrou `leader_number`; `you.participant_number` vem no `snapshot` e na resposta do lance.
 - D6: categorias definidas (7, com "Outros"). Início mínimo do leilão agora 30 s (antes 60 s): com 60 s, "abrir em 1 minuto" (RF06) era recusado.
+
+## 10. O que mudou da v1.2 para a v1.3 (final)
+
+- Datas podem trazer fração de segundo (o DRF serializa assim); nunca comparar como texto.
+- `GET /api/health` documentado.
+- O relógio `now` do lance é lido DEPOIS da trava da linha do leilão.
+- `bid_accepted` ganhou `previous_leader_number` (base do aviso "superado", RF26, sem expor ids).
+- Ponte backend → consumer fixada: grupo `auction_<uuid>`, mensagem `room.event`, só em `on_commit`.
+- D2, D3, D6 e D7 fechadas. Contrato congelado: mudança só com o OK dos três.

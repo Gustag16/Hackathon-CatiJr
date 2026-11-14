@@ -60,12 +60,13 @@ Toda transição passa por UMA função central; nenhum outro código altera `st
 - Tempo: UTC no banco (`USE_TZ=True`); o horário válido é SEMPRE o do servidor
   (`timezone.now()`). O contador do navegador é só visual. (RF16, RF19)
 - Lance: `transaction.atomic()` + `select_for_update()` na linha do leilão, validando
-  NO MOMENTO do processamento (lance mínimo vigente agora, não o da tela): sessão
+  NO MOMENTO do processamento, lendo `now` DEPOIS da trava (lance mínimo vigente agora, não o da tela): sessão
   válida; leilão `running` e `now < ends_at`; autor não é o comitente nem o líder;
   valor >= lance mínimo. (RF10, RF11). Ordem das verificações: ver contrato, seção 4.
 - Cancelar e fechar usam a MESMA trava do lance. (RF08, RF18)
 - Broadcast SÓ DEPOIS do commit: `transaction.on_commit(...)` ao chamar o `group_send`
-  do Channels. A sala nunca vê estado não gravado. (RF11)
+  do Channels. A sala nunca vê estado não gravado. (RF11) Grupo `auction_<uuid>`, mensagem
+  `{"type": "room.event", "message": ...}` (ver contrato, seção 5); só via `services/broadcast.py`.
 - Idempotência (RF12): `Idempotency-Key` (UUID do navegador) por tentativa. Só `201` e
   `409` são gravados (INCLUSIVE recusas). Replay devolve status, `code` e `bid` originais
   + `auction` ATUAL. Chave com outro leilão/valor → `422 IDEMPOTENCY_KEY_MISMATCH`.
@@ -96,12 +97,12 @@ Toda transição passa por UMA função central; nenhum outro código altera `st
 - Segredos só em `.env` (nunca commitar).
 
 ## Comandos (dev local)
-- Infra: `docker compose up -d db redis`
-- Backend: `cd backend && python manage.py runserver 8000` (ASGI/Channels)
-- Worker: `cd backend && python manage.py run_auction_worker`
-- Seed: `cd backend && python manage.py seed_demo`
+`make help` lista tudo. Os principais:
+- Infra: `make db` · Migrar: `make migrate` · Backend: `make backend` · Worker: `make worker` · Seed: `make seed`
+- Testes: `make test` (deve estar verde) e `make test-todo` (garantias RF10–RF18 ainda a implementar)
+- Ambiente: `make doctor` · Fluxo pela API: `make smoke` · 50 lances paralelos: `make stress`
 - Front: `cd frontend && npm run dev` (proxy de `/api`, `/ws` e `/media` para localhost:8000)
-- Tudo (VM): `docker compose up -d --build`
+- Tudo (VM): `docker compose up -d --build` (ou `make up`)
 
 ## Requisitos completos
 O PDF `docs/Requisitos_Leilao_Hackathon.pdf` tem a lista oficial (RF01–RF32, RNF01–RNF04),
