@@ -29,7 +29,7 @@ export function LeilaoCard({
         <div className="absolute left-3 top-3">
           <StatusBadge status={a.status} />
         </div>
-        <span className="absolute bottom-3 left-3 rounded bg-card/95 px-2 py-1 text-[10px] font-bold text-foreground">
+        <span className="absolute right-3 top-3 rounded bg-white px-2.5 py-1 text-[10px] font-bold text-slate-900 shadow-sm">
           {categoryLabel(a.category)}
         </span>
       </Link>
