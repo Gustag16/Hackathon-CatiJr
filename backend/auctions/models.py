@@ -6,6 +6,7 @@ Regras que valem para todo este arquivo:
 """
 
 import uuid
+from pathlib import PurePath
 
 from django.conf import settings
 from django.db import models
@@ -31,12 +32,27 @@ class Item(models.Model):
         return self.name
 
 
+PHOTO_EXTENSIONS = {".jpg", ".png", ".webp"}
+
+
+def photo_upload_to(instance, filename: str) -> str:
+    """Caminho do arquivo: `items/<uuid4>.<ext>`. O nome enviado pelo usuário é descartado.
+
+    A extensão que chega aqui já foi decidida pelo CONTEÚDO (ver `auctions.photos`); mesmo
+    assim só aceitamos as 3 conhecidas, para nunca gravar `.html`, `.svg` etc. no disco servido.
+    """
+    extension = PurePath(filename).suffix.lower()
+    if extension not in PHOTO_EXTENSIONS:
+        extension = ""
+    return f"items/{uuid.uuid4()}{extension}"
+
+
 class ItemPhoto(models.Model):
     """Só o caminho fica no banco; o arquivo fica em MEDIA_ROOT com nome UUID (D5)."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="photos")
-    file = models.FileField(upload_to="items/")
+    file = models.FileField(upload_to=photo_upload_to, max_length=200)
     position = models.PositiveSmallIntegerField(default=0)
 
     class Meta:

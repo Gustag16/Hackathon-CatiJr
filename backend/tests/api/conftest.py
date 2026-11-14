@@ -59,3 +59,50 @@ def logged(api, make_user):
     user = make_user()
     api.login(username=user.email, password=PASSWORD)
     return api, user
+
+
+# ---------- leilões ----------
+
+
+def image_bytes(fmt: str = "PNG", size: tuple[int, int] = (24, 16), color=(200, 80, 40)) -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color).save(buffer, format=fmt)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def media(settings, tmp_path):
+    """Fotos vão para uma pasta temporária, nunca para o disco do projeto."""
+    settings.MEDIA_ROOT = tmp_path
+    return tmp_path
+
+
+@pytest.fixture
+def make_auction(db, clock, make_user):
+    """Cria leilão direto no banco (arranjo de teste). Datas relativas ao relógio falso."""
+    from auctions.models import Auction, AuctionParticipant, Item
+
+    default_seller = {}
+
+    def _make(*, status="running", starts_in=-300, duration=900, price=10_000, seller=None,
+              name="Violão", highest=None, winner=None) -> Auction:  # fmt: skip
+        if seller is None:
+            seller = default_seller.setdefault("user", make_user("Comitente"))
+        starts_at = clock.now + timedelta(seconds=starts_in)
+        ends_at = starts_at + timedelta(seconds=duration)
+        item = Item.objects.create(seller=seller, name=name, description="Usado", category="outros")
+        auction = Auction.objects.create(
+            item=item, status=status, start_price_cents=price,
+            starts_at=starts_at, ends_at=ends_at, original_ends_at=ends_at,
+        )  # fmt: skip
+        if highest is not None:
+            leader = AuctionParticipant.objects.create(auction=auction, user=winner, number=1)
+            auction.highest_bid_cents, auction.leader, auction.bid_count = highest, leader, 1
+            auction.save()
+        return auction
+
+    return _make
