@@ -8,6 +8,8 @@ import uuid
 import pytest
 from rest_framework.test import APIClient
 
+from auctions.creation import MAX_PRICE_CENTS
+
 pytestmark = pytest.mark.django_db
 
 
@@ -130,3 +132,18 @@ def test_400_nao_e_gravado(logged, make_auction):
     post_bid(client, auction.id, amount=1.5, key=key)
     assert IdempotencyRecord.objects.count() == 0
     assert post_bid(client, auction.id, key=key).status_code == 201
+
+
+@pytest.mark.parametrize("amount", [10**30, MAX_PRICE_CENTS + 1])
+def test_valor_acima_do_teto_400(logged, make_auction, amount):
+    """Mesmo teto do preço inicial. Sem ele, 10**30 estouraria o BigInteger do banco (500)."""
+    client, _ = logged
+    response = post_bid(client, make_auction().id, amount=amount)
+    assert response.status_code == 400
+    assert list(response.json()["fields"]) == ["amount_cents"]
+
+
+def test_valor_no_teto_exato_passa_a_validacao(logged, make_auction):
+    client, _ = logged
+    response = post_bid(client, make_auction().id, amount=MAX_PRICE_CENTS)
+    assert response.status_code == 201

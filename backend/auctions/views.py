@@ -12,7 +12,7 @@ from rest_framework.response import Response
 
 from config.api_errors import error_response
 
-from .creation import create_auction, validate_create
+from .creation import MAX_PRICE_CENTS, create_auction, validate_create
 from .models import Auction, AuctionStatus, ItemPhoto
 from .serializers import auction_detail, auction_summary
 from .services import clock
@@ -161,6 +161,8 @@ def bids_view(request, auction_id: str):
     amount = request.data.get("amount_cents") if isinstance(request.data, dict) else None
     if type(amount) is not int or amount <= 0:  # `type is int` recusa float, texto e bool
         errors["amount_cents"] = ["Use um inteiro positivo em centavos (12500 = R$ 125,00)."]
+    elif amount > MAX_PRICE_CENTS:  # mesmo teto do preço inicial; acima disso estoura o BigInteger
+        errors["amount_cents"] = ["Valor alto demais."]
     try:
         key = uuid.UUID(request.headers.get("Idempotency-Key", ""))
     except ValueError:
