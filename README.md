@@ -6,7 +6,17 @@ Hackathon CATI Cloud Labs. Time: Danilo, Amadeu, Bortoleto.
 (preencher: http://200.18.99.113:<porta-web>)
 
 ## Como recriar o ambiente do zero (RNF03)
-(preencher)
+Passo a passo completo (dev e VM) em [docs/runbook.md](docs/runbook.md). Resumo em dev:
+
+```bash
+cp .env.example .env && make db && make migrate
+make backend    # terminal 1: API em http://localhost:8000
+make worker     # terminal 2: abre e fecha leilões
+make doctor     # confere o ambiente
+```
+
+Outros documentos: [arquitetura](docs/architecture.md) · [contrato da API](docs/contract.md) ·
+[roteiro da demo](docs/demo-script.md) · [pitch](docs/pitch.md) · [propostas em votação](docs/PROPOSTAS.md)
 
 ## Contas de demonstração (RNF04)
 (preencher: 1+ comitente, 3 compradores, leilões em estados diferentes)
