@@ -1,0 +1,4 @@
+import { createFileRoute } from '@tanstack/react-router';
+import { AuthForm } from '@/features/auctions/auth-form';
+export const Route = createFileRoute('/login')({validateSearch:(search:Record<string,unknown>):{registered?:boolean}=>({registered:search['registered']===true||search['registered']==='true'}),head:()=>({meta:[{title:'Entrar | Katchau Leilões'},{name:'description',content:'Entre na sua conta Katchau e participe de leilões em tempo real.'},{property:'og:title',content:'Entrar | Katchau Leilões'},{property:'og:description',content:'Entre para participar da próxima disputa.'},{property:'og:type',content:'website'},{name:'twitter:card',content:'summary_large_image'}]}),component:Login});
+function Login(){const {registered}=Route.useSearch();return <AuthForm registered={registered ?? false}/>;}
