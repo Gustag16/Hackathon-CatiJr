@@ -19,7 +19,18 @@ Outros documentos: [arquitetura](docs/architecture.md) · [contrato da API](docs
 [roteiro da demo](docs/demo-script.md) · [pitch](docs/pitch.md) · [propostas em votação](docs/PROPOSTAS.md)
 
 ## Contas de demonstração (RNF04)
-(preencher: 1+ comitente, 3 compradores, leilões em estados diferentes)
+Criadas por `make seed` (`python manage.py seed_demo`). Senha de todas: `leilao-demo-2026`.
+
+| Papel | E-mail | Nome |
+|---|---|---|
+| Comitente (dono dos ~100 leilões) | `comitente@demo.test` | Carlos Comitente |
+| Comprador | `ana@demo.test` | Ana Compradora |
+| Comprador | `bruno@demo.test` | Bruno Comprador |
+| Comprador | `carla@demo.test` | Carla Compradora |
+
+Leilões: 25 em andamento (5 fecham em até 10 min), 40 agendados (6 abrem em até 5 min e duram 3),
+18 vendidos, 9 encerrados sem lances, 8 cancelados; 3 fotos cada. Rodar de novo não duplica;
+`python manage.py seed_demo --reset` recria com horários novos (usar pouco antes da demo).
 
 ## Decisões da equipe
 
