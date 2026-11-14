@@ -11,3 +11,10 @@ staticfiles/
 .idea/
 *.log
 db.sqlite3
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.sqlite3
+.env.*
+!.env.example
