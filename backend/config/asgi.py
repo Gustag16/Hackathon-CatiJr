@@ -12,9 +12,7 @@ from channels.auth import AuthMiddlewareStack  # noqa: E402
 from channels.routing import ProtocolTypeRouter, URLRouter  # noqa: E402
 from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E402
 
-# TODO(Bortoleto): rotas do consumer da sala, ex.:
-#   path("ws/auctions/<uuid:auction_id>/", AuctionRoomConsumer.as_asgi())
-websocket_urlpatterns = []
+from auctions.routing import websocket_urlpatterns  # noqa: E402
 
 application = ProtocolTypeRouter(
     {
