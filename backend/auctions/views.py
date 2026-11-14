@@ -16,6 +16,7 @@ from .creation import create_auction, validate_create
 from .models import Auction, AuctionStatus, ItemPhoto
 from .serializers import auction_detail, auction_summary
 from .services import clock
+from .services.bidding import place_bid
 from .services.errors import CannotCancel, NotSeller
 from .services.transitions import cancel_auction
 
@@ -148,3 +149,29 @@ def cancel_view(request, auction_id: str):
         }[exc.reason]
         return error_response("CANNOT_CANCEL", message, 409, reason=exc.reason)
     return _detail_response(parsed)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])  # passo 1 do contrato: sem sessão = 401
+def bids_view(request, auction_id: str):
+    """POST /api/auctions/{id}/bids. Passos 1-3 da seção 4 aqui; o resto em `place_bid`."""
+    parsed = _existing_id(auction_id)  # passo 2: 404
+
+    errors: dict[str, list[str]] = {}  # passo 3: corpo e chave válidos
+    amount = request.data.get("amount_cents") if isinstance(request.data, dict) else None
+    if type(amount) is not int or amount <= 0:  # `type is int` recusa float, texto e bool
+        errors["amount_cents"] = ["Use um inteiro positivo em centavos (12500 = R$ 125,00)."]
+    try:
+        key = uuid.UUID(request.headers.get("Idempotency-Key", ""))
+    except ValueError:
+        errors["idempotency_key"] = ["Envie o header Idempotency-Key com um UUID."]
+    if errors:
+        raise ValidationError(errors)
+
+    outcome = place_bid(
+        user=request.user, auction_id=parsed, amount_cents=amount, idempotency_key=key
+    )
+    response = Response(outcome.body, status=outcome.status_code)
+    if outcome.replay:
+        response["Idempotent-Replay"] = "true"
+    return response
