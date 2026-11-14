@@ -7,6 +7,7 @@ import json
 import struct
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 import uuid
@@ -103,7 +104,9 @@ class Api:
     # ----- atalhos do contrato -----
 
     def register_and_login(self, display_name: str) -> str:
-        email = f"{display_name.lower().replace(' ', '.')}.{uuid.uuid4().hex[:8]}@teste.dev"
+        # E-mail só com ASCII (o validador do Django recusa "ç", "ã" etc. no e-mail).
+        slug = unicodedata.normalize("NFKD", display_name).encode("ascii", "ignore").decode()
+        email = f"{slug.lower().replace(' ', '.')}.{uuid.uuid4().hex[:8]}@teste.dev"
         password = "senha-de-teste-123"
         status, body, _ = self.call(
             "POST",
