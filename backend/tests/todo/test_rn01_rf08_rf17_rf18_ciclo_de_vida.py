@@ -142,7 +142,7 @@ def test_fecha_com_lances_como_vendido_para_o_maior_lance(
     assert message["type"] == "auction_finished"
     assert message["result"] == {
         "status": "sold",
-        "winner_label": "Bru*** #2",
+        "winner_label": "Br*** #2",  # "Bruno": ⌊5/2⌋ = 2 letras (contrato, seção 2)
         "final_price_cents": 10_500,
     }
 
