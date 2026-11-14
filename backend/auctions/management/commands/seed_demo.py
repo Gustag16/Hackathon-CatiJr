@@ -13,6 +13,7 @@ as regras de verdade (lance mínimo, ninguém cobre o próprio lance, comitente 
 
 import io
 import random
+import unicodedata
 from datetime import timedelta
 
 from django.core.files.base import ContentFile
@@ -244,6 +245,11 @@ def _bids(auction: Auction, buyers, count: int, last_time, rng: random.Random) -
     auction.save(update_fields=["highest_bid_cents", "leader", "bid_count"])
 
 
+def _ascii(text: str) -> str:
+    """A fonte embutida do Pillow não tem acentos ("Relógio" sairia com um quadrado)."""
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+
+
 def _photo(name: str, category: str, index: int) -> ContentFile:
     """JPEG pequeno gerado na hora: cor da categoria, nome do item e número da foto."""
     red, green, blue = CATEGORY_COLORS[category]
@@ -258,8 +264,8 @@ def _photo(name: str, category: str, index: int) -> ContentFile:
         font, small = ImageFont.load_default(size=26), ImageFont.load_default(size=18)
     except TypeError:  # Pillow antigo
         font = small = ImageFont.load_default()
-    draw.text((24, 150), name, fill="white", font=font)
-    draw.text((24, 310), f"Foto {index + 1}/3 · demonstração", fill=(230, 230, 230), font=small)
+    draw.text((24, 150), _ascii(name), fill="white", font=font)
+    draw.text((24, 310), f"Foto {index + 1}/3 - demonstracao", fill=(230, 230, 230), font=small)
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG", quality=80)
     return ContentFile(buffer.getvalue(), name="foto.jpg")
