@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/api'
 import { Button, Icon, Notice } from '../components/common/Ui'
 import { LeilaoCard } from '../components/home/LeilaoCard'
-import { categoryLabel } from '../utils/auctionRules'
-import type { AuctionPage } from '../utils/interfaces/auctionInterface'
+import { ALL_CATEGORY_LABELS, categoryLabel } from '../utils/auctionRules'
+import type { Auction, AuctionPage } from '../utils/interfaces/auctionInterface'
 import { sampleAuctions } from '../utils/samples'
+
+const PAGE_SIZE = 12
+const SERVER_MAX_PAGE_SIZE = 48
 
 export function HomePage() {
   const [tab, setTab] = useState<'running' | 'scheduled' | 'running,scheduled'>(
@@ -12,6 +15,7 @@ export function HomePage() {
   )
   const [page, setPage] = useState(1)
   const [data, setData] = useState<AuctionPage | null>(null)
+  const [allForFilter, setAllForFilter] = useState<Auction[] | null>(null)
   const [demo, setDemo] = useState(false)
   const [loading, setLoading] = useState(true)
   const [samples] = useState(sampleAuctions)
@@ -19,18 +23,59 @@ export function HomePage() {
   const [category, setCategory] = useState('Todas as categorias')
   const [view, setView] = useState<'grid' | 'list'>('grid')
 
+  const isFiltering =
+    category !== 'Todas as categorias' || search.trim() !== ''
+
   useEffect(() => {
     let active = true
+
     const load = async () => {
       try {
-        const response = await api.listAuctions({
-          status: tab,
-          page,
-          page_size: 12,
-        })
-        if (active) {
-          setData(response)
-          setDemo(false)
+        if (!isFiltering) {
+          const response = await api.listAuctions({
+            status: tab,
+            page,
+            page_size: PAGE_SIZE,
+          })
+          if (active) {
+            setData(response)
+            setAllForFilter(null)
+            setDemo(false)
+          }
+        } else {
+          // Quando há filtro de categoria ou busca ativo, busca todos os lotes
+          // do status atual (usando o lote máximo de 48 do servidor) para juntar
+          // os resultados nas páginas sem buracos e remover páginas vazias.
+          const firstPage = await api.listAuctions({
+            status: tab,
+            page: 1,
+            page_size: SERVER_MAX_PAGE_SIZE,
+          })
+          let combined = [...firstPage.results]
+          const totalPages = Math.ceil(
+            firstPage.total / SERVER_MAX_PAGE_SIZE,
+          )
+          if (totalPages > 1) {
+            const restPromises: Promise<AuctionPage>[] = []
+            for (let p = 2; p <= totalPages; p++) {
+              restPromises.push(
+                api.listAuctions({
+                  status: tab,
+                  page: p,
+                  page_size: SERVER_MAX_PAGE_SIZE,
+                }),
+              )
+            }
+            const restPages = await Promise.all(restPromises)
+            for (const rp of restPages) {
+              combined = combined.concat(rp.results)
+            }
+          }
+          if (active) {
+            setData(firstPage)
+            setAllForFilter(combined)
+            setDemo(false)
+          }
         }
       } catch {
         if (active) {
@@ -38,10 +83,11 @@ export function HomePage() {
           setData({
             results,
             page: 1,
-            page_size: 12,
+            page_size: PAGE_SIZE,
             total: results.length,
             server_time: new Date().toISOString(),
           })
+          setAllForFilter(results)
           setDemo(true)
         }
       } finally {
@@ -55,7 +101,7 @@ export function HomePage() {
       active = false
       clearInterval(timer)
     }
-  }, [tab, page, samples])
+  }, [tab, page, isFiltering, samples])
 
   const changeTab = (nextTab: 'running' | 'scheduled' | 'running,scheduled') => {
     if (nextTab === tab && page === 1) return
@@ -66,25 +112,48 @@ export function HomePage() {
 
   const changePage = (nextPage: number) => {
     if (nextPage === page) return
-    setLoading(true)
+    if (!isFiltering) {
+      setLoading(true)
+    }
     setPage(nextPage)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const results = (data?.results || []).filter(
-    (a) =>
-      (category === 'Todas as categorias' ||
-        categoryLabel(a.category) === category ||
-        a.category === category) &&
-      a.name.toLowerCase().includes(search.toLowerCase()),
-  )
-  const pages = Math.max(
-    1,
-    Math.ceil((data?.total || 0) / (data?.page_size || 12)),
-  )
+  const handleSearchChange = (value: string) => {
+    setSearch(value)
+    setPage(1)
+  }
+
+  const handleCategoryChange = (value: string) => {
+    setCategory(value)
+    setPage(1)
+  }
+
+  // Se estiver filtrando, filtra sobre todos os leilões da aba e reagrupa em páginas de 12
+  const filteredPool = isFiltering
+    ? (allForFilter ?? data?.results ?? []).filter(
+        (a) =>
+          (category === 'Todas as categorias' ||
+            categoryLabel(a.category) === category ||
+            a.category === category) &&
+          a.name.toLowerCase().includes(search.trim().toLowerCase()),
+      )
+    : (data?.results ?? [])
+
+  const totalCount = isFiltering ? filteredPool.length : (data?.total ?? 0)
+  const pages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const safePage = Math.min(page, pages)
+
+  const results = isFiltering
+    ? filteredPool.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+    : filteredPool
 
   const categoryOptions = [
     'Todas as categorias',
-    ...new Set((data?.results || []).map((a) => categoryLabel(a.category))),
+    ...new Set([
+      ...ALL_CATEGORY_LABELS,
+      ...(data?.results || []).map((a) => categoryLabel(a.category)),
+    ]),
   ]
 
   return (
@@ -167,7 +236,7 @@ export function HomePage() {
                 {label}
                 {tab === value && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
-                    {data?.total || 0}
+                    {totalCount}
                   </span>
                 )}
               </button>
@@ -203,7 +272,7 @@ export function HomePage() {
             <input
               aria-label="Buscar leilões"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="O que você está procurando?"
               className="field pl-10 text-xs"
             />
@@ -211,7 +280,7 @@ export function HomePage() {
           <select
             aria-label="Filtrar por categoria"
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={(e) => handleCategoryChange(e.target.value)}
             className="field text-xs sm:w-52"
           >
             {categoryOptions.map((c) => (
@@ -232,7 +301,7 @@ export function HomePage() {
         <div className="mb-4 text-[11px] text-muted-foreground">
           {loading
             ? 'Buscando leilões…'
-            : `${results.length} leilões ${tab === 'scheduled' ? 'agendados' : 'disponíveis'}`}
+            : `${totalCount} leilões ${tab === 'scheduled' ? 'agendados' : 'disponíveis'}`}
         </div>
 
         <div
@@ -258,25 +327,26 @@ export function HomePage() {
 
         <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6 text-xs text-muted-foreground">
           <span>
-            Página {page} de {pages}
+            Página {safePage} de {pages}
           </span>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              disabled={page <= 1}
-              onClick={() => changePage(page - 1)}
+              disabled={safePage <= 1}
+              onClick={() => changePage(safePage - 1)}
             >
               Anterior
             </Button>
             {Array.from({ length: pages }, (_, i) => i + 1)
               .filter(
-                (p) => p === 1 || p === pages || Math.abs(p - page) <= 2,
+                (p) =>
+                  p === 1 || p === pages || Math.abs(p - safePage) <= 2,
               )
               .map((p) => (
                 <Button
                   key={p}
                   aria-label={`Página ${p}`}
-                  variant={p === page ? 'primary' : 'outline'}
+                  variant={p === safePage ? 'primary' : 'outline'}
                   onClick={() => changePage(p)}
                 >
                   {p}
@@ -284,8 +354,8 @@ export function HomePage() {
               ))}
             <Button
               variant="outline"
-              disabled={page >= pages || demo}
-              onClick={() => changePage(page + 1)}
+              disabled={safePage >= pages || demo}
+              onClick={() => changePage(safePage + 1)}
             >
               Próxima
               <Icon name="chevron" className="h-3 w-3" />
