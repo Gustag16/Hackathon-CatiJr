@@ -45,10 +45,17 @@ def test_todo_campo_de_dinheiro_e_inteiro():
 def test_limites_do_contrato_vem_da_config():
     """RF06: os nomes batem com `limits` do GET /api/config."""
     assert set(settings.AUCTION_LIMITS) == {
-        "min_photos", "max_photos", "max_photo_bytes", "accepted_photo_types",
-        "max_name_length", "max_description_length", "min_duration_seconds",
-        "max_duration_seconds", "min_start_delay_seconds", "max_start_advance_seconds",
-    }  # fmt: skip
+        "min_photos",
+        "max_photos",
+        "max_photo_bytes",
+        "accepted_photo_types",
+        "max_name_length",
+        "max_description_length",
+        "min_duration_seconds",
+        "max_duration_seconds",
+        "min_start_delay_seconds",
+        "max_start_advance_seconds",
+    }
 
 
 def test_erro_401_no_formato_do_contrato():
