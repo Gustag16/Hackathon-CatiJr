@@ -1,22 +1,21 @@
-:8022 {
-    # WebSocket (/ws/auctions/{id}/) -> Back-end na porta 8022
+# deploy/Caddyfile
+:8080 {
     handle /ws/* {
-        reverse_proxy backend:8022
+        reverse_proxy backend:8000
     }
 
-    # REST API -> Back-end na porta 8022
     handle /api/* {
-        reverse_proxy backend:8022
+        reverse_proxy backend:8000
     }
 
-    # Mídia local (D5)
     handle /media/* {
         root * /srv
         file_server
     }
 
-    # Front-end na mesma origem (8082)
     handle {
-        reverse_proxy frontend:80 # ou root * /srv/frontend + file_server, se build estático
+        root * /srv/frontend
+        try_files {path} /index.html
+        file_server
     }
 }
