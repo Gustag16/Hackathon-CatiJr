@@ -214,6 +214,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
       }
       setNotice('Lance enviado com sucesso.')
     } catch (e) {
+      let msg = (e as Error).message
       if (e instanceof ApiError) {
         if (definitiveBidResponse(e.status)) {
           updatePendingBid(null)
@@ -221,9 +222,13 @@ export function SalaLeilaoPage({ id }: { id: string }) {
         if (e.data.auction) {
           setAuction((a) => (a ? { ...a, ...e.data.auction } : a))
         }
-        if (e.data.min_bid_cents !== undefined) {
-          const minimum = e.data.min_bid_cents
+        const minimum =
+          e.data.min_bid_cents ?? e.data.auction?.min_next_bid_cents
+        if (minimum !== undefined) {
           setAuction((a) => (a ? { ...a, min_next_bid_cents: minimum } : a))
+          if (e.status === 409 && !msg.includes('R$')) {
+            msg = `${msg} (Lance mínimo atual: ${money(minimum)})`
+          }
         }
         if (e.status === 429) {
           setRateLimited(true)
@@ -235,7 +240,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
           }, e.data.retry_after_ms || 5000)
         }
       }
-      setError((e as Error).message)
+      setError(msg)
     } finally {
       setPending(false)
     }

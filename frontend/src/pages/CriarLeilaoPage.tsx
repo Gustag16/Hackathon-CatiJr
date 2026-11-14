@@ -4,7 +4,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react'
-import { api, ApiError } from '../api/api'
+import { api, ApiError, getServerNowMs } from '../api/api'
 import { Link } from '../components/common/Router'
 import { Button, Icon } from '../components/common/Ui'
 import { toCents, validatePhotos } from '../utils/auctionRules'
@@ -52,15 +52,50 @@ export function CriarLeilaoPage() {
     setError('')
     setFields({})
     try {
-      const photoError = validatePhotos(photos)
+      const limits = config?.limits
+      const photoError = validatePhotos(photos, limits)
       if (photoError) throw new Error(photoError)
       const body = new FormData(e.currentTarget)
+      const name = String(body.get('name') || '').trim()
+      const description = String(body.get('description') || '').trim()
+      if (limits && name.length > limits.max_name_length) {
+        throw new Error(
+          `O título deve ter no máximo ${limits.max_name_length} caracteres.`,
+        )
+      }
+      if (limits && description.length > limits.max_description_length) {
+        throw new Error(
+          `A descrição deve ter no máximo ${limits.max_description_length} caracteres.`,
+        )
+      }
       body.set('start_price_cents', String(toCents(String(body.get('price')))))
       body.delete('price')
-      body.set('starts_at', new Date(String(body.get('starts_at'))).toISOString())
+      const startsAtDate = new Date(String(body.get('starts_at')))
+      if (Number.isNaN(startsAtDate.getTime())) {
+        throw new Error('Informe uma data de início válida.')
+      }
+      if (limits) {
+        const delaySec = (startsAtDate.getTime() - getServerNowMs()) / 1000
+        if (delaySec < limits.min_start_delay_seconds) {
+          throw new Error(
+            `O início deve ser pelo menos ${limits.min_start_delay_seconds} segundos no futuro.`,
+          )
+        }
+        if (delaySec > limits.max_start_advance_seconds) {
+          throw new Error('A data de início excede a antecedência máxima permitida.')
+        }
+      }
+      body.set('starts_at', startsAtDate.toISOString())
       const duration = Number(body.get('duration_seconds'))
-      if (!Number.isInteger(duration) || duration <= 0) {
-        throw new Error('Informe uma duração válida.')
+      if (
+        !Number.isInteger(duration) ||
+        duration < (limits?.min_duration_seconds ?? 60) ||
+        (limits?.max_duration_seconds !== undefined &&
+          duration > limits.max_duration_seconds)
+      ) {
+        throw new Error(
+          `Informe uma duração válida (mínimo de ${limits?.min_duration_seconds ?? 60} segundos).`,
+        )
       }
       body.delete('photos')
       photos.forEach((f) => body.append('photos', f))

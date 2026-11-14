@@ -1,4 +1,7 @@
-import type { Auction } from './interfaces/auctionInterface'
+import type {
+  Auction,
+  ConfigLimits,
+} from './interfaces/auctionInterface'
 import type { Bid } from './interfaces/bidInterface'
 import type { User } from './interfaces/userInterface'
 
@@ -11,6 +14,8 @@ const CATEGORY_NAMES: Record<string, string> = {
   colecionaveis: 'Colecionáveis',
   outros: 'Outros',
 }
+
+export const ALL_CATEGORY_LABELS = Object.values(CATEGORY_NAMES)
 
 export function categoryLabel(category: string): string {
   return CATEGORY_NAMES[category] ?? category
@@ -113,18 +118,27 @@ export function generateUUID(): string {
   })
 }
 
-export function validatePhotos(photos: File[]): string | null {
-  if (photos.length < 3 || photos.length > 8) {
-    return 'Selecione de 3 a 8 fotos.'
+export function validatePhotos(
+  photos: File[],
+  limits?: Partial<ConfigLimits>,
+): string | null {
+  const minPhotos = limits?.min_photos ?? 3
+  const maxPhotos = limits?.max_photos ?? 8
+  const maxBytes = limits?.max_photo_bytes ?? 5 * 1024 * 1024
+  const acceptedTypes = limits?.accepted_photo_types ?? [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]
+
+  if (photos.length < minPhotos || photos.length > maxPhotos) {
+    return `Selecione de ${minPhotos} a ${maxPhotos} fotos.`
   }
+  const maxMb = Math.round((maxBytes / (1024 * 1024)) * 10) / 10
   if (
-    photos.some(
-      (f) =>
-        !['image/jpeg', 'image/png', 'image/webp'].includes(f.type) ||
-        f.size > 5 * 1024 * 1024,
-    )
+    photos.some((f) => !acceptedTypes.includes(f.type) || f.size > maxBytes)
   ) {
-    return 'Use imagens JPEG, PNG ou WebP de até 5 MB.'
+    return `Use imagens nos formatos aceitos (${acceptedTypes.join(', ')}) de até ${maxMb} MB.`
   }
   return null
 }

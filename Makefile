@@ -6,7 +6,7 @@ PY    := $(abspath $(VENV))/bin/python
 BASE  ?= http://localhost:8000
 
 .DEFAULT_GOAL := help
-.PHONY: help venv db migrate backend worker seed test test-todo lint fmt up down logs doctor smoke stress
+.PHONY: help venv db migrate backend worker seed seed-reset dev back-all front test test-todo lint fmt up down logs doctor smoke stress
 
 help: ## lista as tarefas
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -33,6 +33,25 @@ worker: venv ## worker que abre e fecha leilões
 
 seed: venv ## dados de demonstração (RNF04)
 	cd backend && $(PY) manage.py seed_demo
+
+seed-reset: venv ## recria os 100 leilões de demonstração com horários novos
+	cd backend && $(PY) manage.py seed_demo --reset
+
+front: ## servidor de desenvolvimento do frontend (porta 5173)
+	cd frontend && npm run dev
+
+back-all: db migrate seed ## sobe tudo do backend de uma vez (db + migrate + seed + worker + backend)
+	@trap 'kill 0' SIGINT; \
+	(cd backend && $(PY) manage.py run_auction_worker) & \
+	(cd backend && $(PY) manage.py runserver 8000) & \
+	wait
+
+dev: db migrate seed ## sobe TUDO de uma vez em 1 terminal (db + migrate + seed + worker + backend + front)
+	@trap 'kill 0' SIGINT; \
+	(cd backend && $(PY) manage.py run_auction_worker) & \
+	(cd backend && $(PY) manage.py runserver 8000) & \
+	(cd frontend && npm run dev) & \
+	wait
 
 test: venv ## testes que DEVEM estar verdes
 	cd backend && $(PY) -m pytest tests --ignore=tests/todo -q
