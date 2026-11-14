@@ -1,11 +1,9 @@
 # Divisão de pastas do AGENTS.md ("Regras de trabalho", item 2).
-# TODO: trocar @amadeu-TODO e @bortoleto-TODO pelos usuários reais do GitHub;
-# enquanto forem inválidos, o GitHub ignora essas linhas.
-/backend/            @DaniloSelliJr
-/scripts/            @DaniloSelliJr
-/frontend/           @amadeu-TODO
-/deploy/             @bortoleto-TODO
-/docker-compose.yml  @bortoleto-TODO
+/backend/            @DaniloSelliJunior
+/scripts/            @DaniloSelliJunior
+/frontend/           @Gustag16
+/deploy/             @Bortoleto-Gustavo
+/docker-compose.yml  @Bortoleto-Gustavo
 # Contrato e regras: mudança precisa dos três.
-/docs/contract.md    @DaniloSelliJr @amadeu-TODO @bortoleto-TODO
-/AGENTS.md           @DaniloSelliJr @amadeu-TODO @bortoleto-TODO
+/docs/contract.md    @DaniloSelliJunior @Gustag16 @Bortoleto-Gustavo
+/AGENTS.md           @DaniloSelliJunior @Gustag16 @Bortoleto-Gustavo
