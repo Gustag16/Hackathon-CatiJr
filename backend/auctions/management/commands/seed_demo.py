@@ -13,6 +13,7 @@ as regras de verdade (lance mínimo, ninguém cobre o próprio lance, comitente 
 
 import io
 import random
+import textwrap
 import unicodedata
 from datetime import timedelta
 
@@ -264,7 +265,7 @@ def _photo(name: str, category: str, index: int) -> ContentFile:
         font, small = ImageFont.load_default(size=26), ImageFont.load_default(size=18)
     except TypeError:  # Pillow antigo
         font = small = ImageFont.load_default()
-    draw.text((24, 150), _ascii(name), fill="white", font=font)
+    draw.multiline_text((24, 130), textwrap.fill(_ascii(name), 30), fill="white", font=font)
     draw.text((24, 310), f"Foto {index + 1}/3 - demonstracao", fill=(230, 230, 230), font=small)
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG", quality=80)

@@ -69,3 +69,11 @@ def test_erro_401_no_formato_do_contrato():
     response = protegida(APIRequestFactory().get("/x"))
     assert response.status_code == 401
     assert response.data["code"] == "NOT_AUTHENTICATED" and "message" in response.data
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_rota_inexistente_da_api_responde_json(method):
+    response = getattr(APIClient(), method)("/api/nao-existe/123")
+    assert response.status_code == 404
+    assert response.json() == {"code": "NOT_FOUND", "message": "Recurso não encontrado."}
