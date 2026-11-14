@@ -19,7 +19,6 @@ import {
 import { useAuth } from '../utils/authContext'
 import type { Auction } from '../utils/interfaces/auctionInterface'
 import type { Bid, PendingBidState } from '../utils/interfaces/bidInterface'
-import { sampleAuctions } from '../utils/samples'
 
 function loadPendingBid(auctionId: string): PendingBidState | null {
   try {
@@ -55,7 +54,6 @@ export function SalaLeilaoPage({ id }: { id: string }) {
   const { user } = useAuth()
   const [auction, setAuction] = useState<Auction | null>(null)
   const [photo, setPhoto] = useState('')
-  const [demo, setDemo] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [connected, setConnected] = useState(false)
@@ -93,19 +91,10 @@ export function SalaLeilaoPage({ id }: { id: string }) {
         if (active) {
           setAuction(a)
           setPhoto(a.cover_photo_url)
-          setDemo(false)
         }
       })
       .catch((e) => {
-        if (!active) return
-        const sample = sampleAuctions().find((a) => a.id === id)
-        if (sample) {
-          setAuction(sample)
-          setPhoto(sample.cover_photo_url)
-          setDemo(true)
-        } else {
-          setError((e as Error).message)
-        }
+        if (active) setError((e as Error).message)
       })
     return () => {
       active = false
@@ -116,7 +105,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
   const hasAuction = Boolean(auction)
 
   useEffect(() => {
-    if (!userId || demo || !hasAuction) return
+    if (!userId || !hasAuction) return
 
     return connectAuctionRoomWs(id, {
       onConnectionChange: setConnected,
@@ -173,7 +162,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
         }
       },
     })
-  }, [id, userId, demo, hasAuction])
+  }, [id, userId, hasAuction])
 
   async function bid(custom: boolean, retry = false) {
     if (!auction || !connected) return
@@ -295,14 +284,6 @@ export function SalaLeilaoPage({ id }: { id: string }) {
       <Link to="/" className="text-xs text-muted-foreground">
         ← Explorar leilões
       </Link>
-      {demo && (
-        <div className="mt-5">
-          <Notice>
-            Item ilustrativo · A API Django ainda não está conectada. Não é
-            possível enviar lances nesta prévia.
-          </Notice>
-        </div>
-      )}
       <div className="mb-6 mt-7 flex flex-wrap items-start justify-between gap-4">
         <div>
           <span className="text-xs text-muted-foreground">
@@ -396,7 +377,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
                 </Notice>
               </div>
             )}
-            {user && !demo && (
+            {user && (
               <>
                 <p
                   className={`mb-4 text-xs font-bold ${
@@ -426,7 +407,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
             )}
 
             <FormularioLance
-              loggedIn={Boolean(user && !demo)}
+              loggedIn={Boolean(user)}
               disabled={disabled}
               pending={pending}
               minNextBidCents={auction.min_next_bid_cents || 0}

@@ -4,7 +4,6 @@ import { Button, Icon, Notice } from '../components/common/Ui'
 import { LeilaoCard } from '../components/home/LeilaoCard'
 import { ALL_CATEGORY_LABELS, categoryLabel } from '../utils/auctionRules'
 import type { Auction, AuctionPage } from '../utils/interfaces/auctionInterface'
-import { sampleAuctions } from '../utils/samples'
 
 const PAGE_SIZE = 12
 const SERVER_MAX_PAGE_SIZE = 48
@@ -16,9 +15,9 @@ export function HomePage() {
   const [page, setPage] = useState(1)
   const [data, setData] = useState<AuctionPage | null>(null)
   const [allForFilter, setAllForFilter] = useState<Auction[] | null>(null)
-  const [demo, setDemo] = useState(false)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [samples] = useState(sampleAuctions)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Todas as categorias')
   const [view, setView] = useState<'grid' | 'list'>('grid')
@@ -40,7 +39,7 @@ export function HomePage() {
           if (active) {
             setData(response)
             setAllForFilter(null)
-            setDemo(false)
+            setError('')
           }
         } else {
           // Quando há filtro de categoria ou busca ativo, busca todos os lotes
@@ -74,21 +73,17 @@ export function HomePage() {
           if (active) {
             setData(firstPage)
             setAllForFilter(combined)
-            setDemo(false)
+            setError('')
           }
         }
-      } catch {
+      } catch (e) {
         if (active) {
-          const results = samples.filter((a) => tab.includes(a.status))
-          setData({
-            results,
-            page: 1,
-            page_size: PAGE_SIZE,
-            total: results.length,
-            server_time: new Date().toISOString(),
-          })
-          setAllForFilter(results)
-          setDemo(true)
+          // Sem dados de reserva: a lista só mostra o que veio da API.
+          setData(null)
+          setAllForFilter(null)
+          setError(
+            (e as Error).message || 'Não foi possível carregar os leilões.',
+          )
         }
       } finally {
         if (active) setLoading(false)
@@ -101,7 +96,13 @@ export function HomePage() {
       active = false
       clearInterval(timer)
     }
-  }, [tab, page, isFiltering, samples])
+  }, [tab, page, isFiltering, reload])
+
+  const retry = () => {
+    setLoading(true)
+    setError('')
+    setReload((n) => n + 1)
+  }
 
   const changeTab = (nextTab: 'running' | 'scheduled' | 'running,scheduled') => {
     if (nextTab === tab && page === 1) return
@@ -289,11 +290,15 @@ export function HomePage() {
           </select>
         </div>
 
-        {demo && (
+        {error && (
           <div className="mb-5">
             <Notice>
-              Prévia com itens ilustrativos · A API Django ainda não está
-              conectada. Lances e contas reais não estão disponíveis.
+              <span role="alert">
+                Não foi possível carregar os leilões: {error}
+              </span>
+              <Button variant="outline" className="ml-3" onClick={retry}>
+                Tentar de novo
+              </Button>
             </Notice>
           </div>
         )}
@@ -301,7 +306,9 @@ export function HomePage() {
         <div className="mb-4 text-[11px] text-muted-foreground">
           {loading
             ? 'Buscando leilões…'
-            : `${totalCount} leilões ${tab === 'scheduled' ? 'agendados' : 'disponíveis'}`}
+            : error
+              ? 'Lista indisponível no momento.'
+              : `${totalCount} leilões ${tab === 'scheduled' ? 'agendados' : 'disponíveis'}`}
         </div>
 
         <div
@@ -319,7 +326,7 @@ export function HomePage() {
             />
           ))}
         </div>
-        {!loading && results.length === 0 && (
+        {!loading && !error && results.length === 0 && (
           <div className="py-20 text-center text-sm text-muted-foreground">
             Nenhum leilão encontrado.
           </div>
@@ -354,7 +361,7 @@ export function HomePage() {
               ))}
             <Button
               variant="outline"
-              disabled={safePage >= pages || demo}
+              disabled={safePage >= pages}
               onClick={() => changePage(safePage + 1)}
             >
               Próxima
