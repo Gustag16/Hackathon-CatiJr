@@ -19,7 +19,9 @@ class Item(models.Model):
     """Bem anunciado. Um item pode ter vários leilões ao longo do tempo (RF28)."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="items")
+    seller = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="items"
+    )
     name = models.CharField(max_length=200)  # o limite real vem de AUCTION_LIMITS (RF06)
     description = models.TextField()
     category = models.CharField(max_length=40)
@@ -81,7 +83,9 @@ class Auction(models.Model):
             models.Index(fields=["status", "starts_at"]),  # listagem "agendados" + worker
         ]
         constraints = [
-            models.CheckConstraint(condition=Q(start_price_cents__gt=0), name="auction_price_positive"),
+            models.CheckConstraint(
+                condition=Q(start_price_cents__gt=0), name="auction_price_positive"
+            ),
             models.CheckConstraint(
                 condition=Q(ends_at__gt=models.F("starts_at")), name="auction_ends_after_start"
             ),
@@ -122,7 +126,9 @@ class AuctionParticipant(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["auction", "user"], name="participant_once_per_auction"),
+            models.UniqueConstraint(
+                fields=["auction", "user"], name="participant_once_per_auction"
+            ),
             models.UniqueConstraint(fields=["auction", "number"], name="participant_number_unique"),
         ]
 
@@ -139,7 +145,9 @@ class Bid(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     auction = models.ForeignKey(Auction, on_delete=models.PROTECT, related_name="bids")
-    participant = models.ForeignKey(AuctionParticipant, on_delete=models.PROTECT, related_name="bids")
+    participant = models.ForeignKey(
+        AuctionParticipant, on_delete=models.PROTECT, related_name="bids"
+    )
     amount_cents = models.BigIntegerField()
     created_at = models.DateTimeField()  # relógio do servidor, lido dentro da transação
 

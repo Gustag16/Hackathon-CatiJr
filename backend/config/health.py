@@ -19,7 +19,9 @@ def _db_ok() -> bool:
 
 def _redis_ok() -> bool:
     try:
-        client = redis.Redis.from_url(settings.REDIS_URL, socket_timeout=1, socket_connect_timeout=1)
+        client = redis.Redis.from_url(
+            settings.REDIS_URL, socket_timeout=1, socket_connect_timeout=1
+        )
         return bool(client.ping())
     except Exception:
         return False
