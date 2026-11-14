@@ -20,7 +20,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </span>
             <span className="text-xl font-extrabold">
               katchau
-              <span className="ml-2 text-[10px] font-semibold uppercase tracking-[2px] text-header-foreground/65">
+              <span className="ml-2 text-[10px] font-semibold uppercase tracking-[2px] text-slate-300">
                 Leilões
               </span>
             </span>

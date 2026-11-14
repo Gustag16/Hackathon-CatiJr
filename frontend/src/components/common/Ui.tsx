@@ -106,7 +106,7 @@ export function Notice({ children }: { children: ReactNode }) {
   return (
     <div
       role="status"
-      className="rounded-md border border-primary/25 bg-warning-soft p-3 text-xs leading-relaxed"
+      className="rounded-md border border-amber-500/30 bg-warning-soft p-3 text-xs leading-relaxed"
     >
       {children}
     </div>

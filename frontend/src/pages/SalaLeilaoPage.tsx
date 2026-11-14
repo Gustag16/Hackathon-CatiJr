@@ -12,6 +12,7 @@ import {
   categoryLabel,
   definitiveBidResponse,
   formatLeaderText,
+  generateUUID,
   money,
   toCents,
 } from '../utils/auctionRules'
@@ -192,7 +193,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
         (!retry && pendingBid.current.amount_cents !== value)
       ) {
         updatePendingBid({
-          key: crypto.randomUUID(),
+          key: generateUUID(),
           amount_cents: value,
         })
       }

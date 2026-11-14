@@ -63,9 +63,11 @@ export function getCsrfCookie(): string | null {
 
 let csrfPromise: Promise<void> | null = null
 
-export async function ensureCsrf(): Promise<string | null> {
-  const existing = getCsrfCookie()
-  if (existing) return existing
+export async function ensureCsrf(forceRefresh = false): Promise<string | null> {
+  if (!forceRefresh) {
+    const existing = getCsrfCookie()
+    if (existing) return existing
+  }
 
   if (!csrfPromise) {
     csrfPromise = fetch('/api/auth/csrf', {

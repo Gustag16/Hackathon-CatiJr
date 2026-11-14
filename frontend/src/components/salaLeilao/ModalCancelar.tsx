@@ -15,7 +15,7 @@ export function ModalCancelar({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-header/60 p-5"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5"
       onClick={onClose}
     >
       <div
