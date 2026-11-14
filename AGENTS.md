@@ -40,6 +40,8 @@ qualquer assistente de IA (Claude, Gemini etc.). Leia inteiro antes de editar.
 - **Item** (nome, descrição, categoria, fotos) e **Leilão/Auction** (início, duração, preço
   inicial, status) são entidades SEPARADAS. Um item tem vários leilões ao longo do tempo,
   mas nunca mais de um `scheduled`/`running` ao mesmo tempo (RF28).
+- **Participante por leilão** (`AuctionParticipant`: leilão, usuário, número): numeração do rótulo anônimo (D4),
+  criada no 1º lance aceito do usuário naquele leilão, sob a trava do lance.
 - Lances, tabela de idempotência `UNIQUE(usuário, chave)` e usuários (e-mail único,
   normalizado em minúsculas e sem espaços).
 
@@ -79,11 +81,14 @@ Toda transição passa por UMA função central; nenhum outro código altera `st
   lance, `min_next_bid_cents = start_price_cents`. (RF14)
 - Comitente nunca dá lance no próprio leilão (`IS_SELLER`), mas PODE entrar na sala.
   Listagem pública; sala exige login; o detalhe público não mostra líder nem lances. (RF04)
-- Líder exibido sem expor o nome completo (`leader_label`). (RF09)
+- Líder exibido sem expor o nome completo: `leader_label` = nome mascarado + nº do participante no leilão
+  (ex.: `Dan*** #3`). A API não expõe o id do líder, só `leader_number`; o front sabe quem é você por
+  `you.participant_number`. O número nasce no 1º lance aceito do usuário no leilão, sob a mesma trava. (RF09, D4)
 - Limites de criação (textos, fotos, duração, antecedência) vêm de config/env. (RF06)
 - Auth: sessão Django (cookie HttpOnly) + CSRF (`X-CSRFToken`), 1 h deslizante. (RF02)
 - Dados de demonstração (RNF04): `manage.py seed_demo` cria ≥ 1 comitente, 3 compradores
-  e leilões em estados diferentes (com ≥ 3 fotos cada e alguns de duração curta).
+  e leilões em estados diferentes (com ≥ 3 fotos cada e alguns de duração curta), mais ~100 leilões
+  no total para exercitar a paginação da listagem (RF20).
 
 ## Convenções
 - Erros: `{ "code": "BID_TOO_LOW", "message": "...", ...extras }` (ver contrato)

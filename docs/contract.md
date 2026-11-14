@@ -1,6 +1,6 @@
-# Contrato da API e do WebSocket — v1
+# Contrato da API e do WebSocket — v1.2
 
-v1 de 14/11/2026. O que mudou desde a v0 está na seção 7. Decisões e seu status, na seção 6.
+v1.2 de 14/11/2026. O que mudou desde a v0 está nas seções 7 a 9. Decisões e seu status, na seção 6.
 Qualquer mudança neste arquivo é avisada no grupo ANTES de mexer no código.
 
 ## 1. Convenções
@@ -59,8 +59,13 @@ Antes do primeiro lance, `current_price_cents = start_price_cents` e `min_next_b
 (o primeiro lance pode ser igual ao preço inicial, RF14). Depois, o mínimo é calculado só pelo servidor.
 
 **AuctionState** (só dentro da sala e nas respostas de lance, ou seja, para logados) =
-AuctionPublic + `{ leader_id: uuid | null, leader_label: "Dan***" | null }`.
-`leader_label` não expõe o nome completo (RF09). (D4)
+AuctionPublic + `{ leader_number: int | null, leader_label: "Dan*** #3" | null }`.
+
+**Rótulo anônimo (RF09, D4).** Cada participante recebe um número por leilão, atribuído no seu 1º lance aceito
+naquele leilão, sob a mesma trava do lance. O rótulo é o nome mascarado + `#número`: mostra os primeiros
+`max(1, min(3, ⌊tamanho do nome / 2⌋))` caracteres e depois `***` ("Danilo" → `Dan*** #3`, "Gus" → `G*** #3`).
+A API NUNCA expõe o id do usuário líder. O front sabe se VOCÊ lidera comparando `leader_number` com
+`you.participant_number` (devolvido no `snapshot` e na resposta do lance) e pode escrever "Você" no lugar do rótulo.
 
 **Bid** `{ id, amount_cents, bidder_label, created_at }`
 
@@ -80,6 +85,8 @@ Fotos: `url` relativa (`/media/...`), servida pelo Caddy direto do disco da VM.
 
 O front usa `limits` para validar no formulário igual ao servidor (RF05/RF06).
 
+Categorias (fixas no backend; `id` = slug): `automoveis` Automóveis · `moveis` Móveis · `eletronicos` Eletrônicos · `arte` Arte · `hobbies-e-musica` Hobbies e música · `colecionaveis` Colecionáveis · `outros` Outros.
+
 ### Contas
 | Método | Caminho | Auth | Corpo | Sucesso | Erros |
 |---|---|---|---|---|---|
@@ -94,10 +101,21 @@ Todo usuário logado pode anunciar e dar lance (RF03). Não existe administrador
 ### Leilões
 | Método | Caminho | Auth | Corpo / Query | Sucesso | Erros |
 |---|---|---|---|---|---|
-| GET | `/api/auctions` | não | `?status=scheduled,running&page=1&page_size=20` (Nível 2: `&q=&category=`) | 200 `{ results: AuctionSummary[], page, page_size, total, server_time }` | — |
+| GET | `/api/auctions` | não | `?status=running,scheduled&page=1&page_size=12` (Nível 2: `&q=&category=`) | 200 `{ results: AuctionSummary[], page, page_size, total, server_time }` | — |
 | GET | `/api/auctions/{id}` | não | — | 200 `AuctionDetail` | `NOT_FOUND` |
 | POST | `/api/auctions` | sim | `multipart/form-data`: `name, description, category, start_price_cents, starts_at, duration_seconds, photos` (arquivo, repetido, de `min_photos` a `max_photos`) | 201 `AuctionDetail` (cria o Item e o 1º Leilão) | `VALIDATION_ERROR` |
 | POST | `/api/auctions/{id}/cancel` | sim (comitente) | — | 200 `AuctionDetail` | `FORBIDDEN`, `CANNOT_CANCEL` (`reason`: `HAS_BIDS` \| `ALREADY_FINISHED`) |
+
+**Listagem (RF20).** Só entram leilões `scheduled` e `running`; os finalizados ficam acessíveis pelo link direto.
+- `status`: `running`, `scheduled` ou `running,scheduled` (padrão). A tela usa isso nas abas
+  "Em andamento", "Agendados" e "Todos".
+- **Ordem, decidida pelo servidor (o front não reordena):** `running` primeiro, por `ends_at` crescente;
+  depois `scheduled`, por `starts_at` crescente; desempate por `id`.
+- **Paginação numerada:** `page` (a partir de 1) e `page_size` (padrão **12**, máximo **48**); `total` permite
+  montar "Página 1 de N". Índices no banco: `(status, ends_at)` e `(status, starts_at)`.
+- Cada item é um `AuctionSummary`. O front mostra "Lance inicial" quando `bid_count = 0` (aí
+  `current_price_cents` = preço inicial) e "Atual" caso contrário. Sem líder no cartão (isso é da sala, RF04).
+- A tela refaz a consulta a cada 30 s; a listagem não usa WebSocket.
 
 Nível 2 (reservado, ainda sem formato): `PATCH /api/auctions/{id}` (RF23), `POST /api/auctions/{id}/relist`
 (RF28; cria um novo Leilão para o MESMO Item), `GET /api/me/participations` (RF27),
@@ -110,8 +128,9 @@ Headers: `Idempotency-Key: <uuid>` (obrigatório) e `X-CSRFToken`. Corpo: `{ "am
 
 **Aceito** — `201`:
 ```json
-{ "bid": { "id": "uuid", "amount_cents": 12500, "bidder_label": "Dan***", "created_at": "..." },
-  "auction": { /* AuctionState */ } }
+{ "bid": { "id": "uuid", "amount_cents": 12500, "bidder_label": "Dan*** #3", "created_at": "..." },
+  "auction": { /* AuctionState */ },
+  "you": { "participant_number": 3 } }
 ```
 
 **Recusa de negócio** — `409` com `{ code, message, auction: AuctionState }` (+ `min_bid_cents` em `BID_TOO_LOW`):
@@ -168,7 +187,7 @@ Todas as mensagens: `{ "type": "...", ..., "server_time": "..." }`
 
 | type | campos | quando |
 |---|---|---|
-| `snapshot` | `auction: AuctionState`, `recent_bids: Bid[]` (até 10, mais novo primeiro), `result` (se finalizado) | ao conectar e após `resync` |
+| `snapshot` | `auction: AuctionState`, `you: { participant_number }`, `recent_bids: Bid[]` (até 10, mais novo primeiro), `result` (se finalizado) | ao conectar e após `resync` |
 | `bid_accepted` | `bid: Bid`, `auction: AuctionState`, `extended: bool` | após o COMMIT de um lance (nunca antes) |
 | `auction_started` | `auction: AuctionState` | worker abriu o leilão |
 | `auction_finished` | `auction: AuctionState`, `result: {status, winner_label, final_price_cents}` | fechou (`sold` ou `ended_no_bids`) |
@@ -199,9 +218,10 @@ Enquanto desconectado, o front mostra "reconectando…" e desabilita o botão de
 | D1 | Dinheiro em centavos inteiros | **Confirmado** |
 | D2 | Sessão Django + CSRF, 1 h deslizante | Proposto |
 | D3 | "Estar na sala" (RF10) = sessão válida; a sala exige login. Sem presença por WS | Proposto |
-| D4 | Formato do `leader_label` (ex.: `Dan***`, ou `Participante 3` por leilão) | A definir |
+| D4 | `leader_label` = nome mascarado + nº do participante no leilão (ex.: `Dan*** #3`); a API não expõe o id do líder | **Confirmado** |
 | D5 | Fotos no disco local da VM (adendo da organização ao PDF), volume Docker servido pelo Caddy, só o caminho no banco | **Confirmado** |
-| D6 | Limites: nome ≤ 100, descrição ≤ 2000, 3–8 fotos jpeg/png/webp ≤ 5 MB, duração ≥ 60 s, início ≥ 60 s à frente; categorias a escolher | Proposto |
+| D6 | Limites: nome ≤ 100, descrição ≤ 2000, 3–8 fotos jpeg/png/webp ≤ 5 MB, duração ≥ 60 s, início ≥ 30 s à frente; categorias: Automóveis, Móveis, Eletrônicos, Arte, Hobbies e música, Colecionáveis, Outros | Proposto |
+| D7 | Listagem (RF20): grade de cartões, abas Em andamento/Agendados/Todos, ordem por término (andamento) e início (agendados), 12 por página numerada, atualiza a cada 30 s | Proposto |
 
 ## 7. O que mudou da v0 para a v1
 
@@ -214,3 +234,12 @@ Enquanto desconectado, o front mostra "reconectando…" e desabilita o botão de
   `IDEMPOTENCY_KEY_MISMATCH` compara `auction_id` e `amount_cents` (422).
 - Ordem das verificações, regra `now < ends_at` e fórmula da prorrogação explícitas. `RATE_LIMITED` na seção de lances.
 - Fotos locais (D5): `url` relativa `/media/...`.
+
+## 8. O que mudou da v1 para a v1.1
+
+- Listagem definida (RF20, D7): padrão `status=running,scheduled`, `page_size` padrão 12 (máx. 48), ordem fixa por status e por data, índices e atualização a cada 30 s.
+
+## 9. O que mudou da v1.1 para a v1.2
+
+- D4 decidido: rótulo = nome mascarado + nº do participante por leilão (`Dan*** #3`). `leader_id` saiu de `AuctionState` (ninguém é identificável entre leilões); entrou `leader_number`; `you.participant_number` vem no `snapshot` e na resposta do lance.
+- D6: categorias definidas (7, com "Outros"). Início mínimo do leilão agora 30 s (antes 60 s): com 60 s, "abrir em 1 minuto" (RF06) era recusado.
