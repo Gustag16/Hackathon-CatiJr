@@ -7,13 +7,17 @@ from django.db.models import Case, F, Prefetch, Value, When
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound, ValidationError
-from rest_framework.permissions import AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
+
+from config.api_errors import error_response
 
 from .creation import create_auction, validate_create
 from .models import Auction, AuctionStatus, ItemPhoto
 from .serializers import auction_detail, auction_summary
 from .services import clock
+from .services.errors import CannotCancel, NotSeller
+from .services.transitions import cancel_auction
 
 LISTABLE = (AuctionStatus.RUNNING, AuctionStatus.SCHEDULED)
 PAGE_SIZE_DEFAULT = 12
@@ -54,8 +58,7 @@ def _create(request):
     now = clock.now()
     clean = validate_create(request.data, request.FILES, now)
     auction = create_auction(seller=request.user, clean=clean)
-    auction = _with_relations(Auction.objects.filter(id=auction.id)).get()
-    return Response(auction_detail(auction, now), status=status.HTTP_201_CREATED)
+    return _detail_response(auction.id, status.HTTP_201_CREATED)
 
 
 def _int_param(request, name: str, default: int, low: int, high: int | None, errors: dict):
@@ -106,15 +109,42 @@ def _list(request):
     )
 
 
+def _existing_id(auction_id: str) -> uuid.UUID:
+    """UUID de um leilão que existe, ou 404 no formato do contrato (id malformado também)."""
+    try:
+        parsed = uuid.UUID(auction_id)
+    except ValueError:
+        raise NotFound() from None
+    if not Auction.objects.filter(id=parsed).exists():
+        raise NotFound()
+    return parsed
+
+
+def _detail_response(auction_id, http_status=status.HTTP_200_OK) -> Response:
+    auction = _with_relations(Auction.objects.filter(id=auction_id)).get()
+    return Response(auction_detail(auction, clock.now()), status=http_status)
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def auction_detail_view(request, auction_id: str):
     """Detalhe público (RF04): sem líder e sem lances recentes, que são da sala."""
+    return _detail_response(_existing_id(auction_id))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cancel_view(request, auction_id: str):
+    """RF08: o comitente cancela enquanto agendado, ou em andamento sem lances."""
+    parsed = _existing_id(auction_id)
     try:
-        parsed = uuid.UUID(auction_id)
-    except ValueError:
-        raise NotFound() from None  # id malformado = leilão inexistente (404 do contrato)
-    auction = _with_relations(Auction.objects.filter(id=parsed)).first()
-    if auction is None:
-        raise NotFound()
-    return Response(auction_detail(auction, clock.now()))
+        cancel_auction(user=request.user, auction_id=parsed)
+    except NotSeller:
+        return error_response("FORBIDDEN", "Só o comitente pode cancelar este leilão.", 403)
+    except CannotCancel as exc:
+        message = {
+            "HAS_BIDS": "Leilão com lances não pode ser cancelado.",
+            "ALREADY_FINISHED": "Este leilão já terminou.",
+        }[exc.reason]
+        return error_response("CANNOT_CANCEL", message, 409, reason=exc.reason)
+    return _detail_response(parsed)

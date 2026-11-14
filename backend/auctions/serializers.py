@@ -5,11 +5,25 @@ Nada aqui expõe líder nem lances: isso é conteúdo da sala (login, etapa 2). 
 todos veem o resultado").
 """
 
-from datetime import datetime
+import json
+from datetime import UTC, datetime
+
+from rest_framework.utils.encoders import JSONEncoder
 
 from accounts.serializers import public_user_json
 
-from .models import Auction, AuctionStatus
+from .models import Auction, AuctionStatus, Bid
+
+
+def iso_z(value: datetime) -> str:
+    """Data em texto ISO 8601 UTC com `Z`, igual ao que o DRF escreve na resposta."""
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def jsonable(data: dict) -> dict:
+    """Converte datas e UUIDs em texto. Necessário para o que vai ao Redis (channel layer)
+    e para o que é gravado em JSONField (resultado de idempotência)."""
+    return json.loads(json.dumps(data, cls=JSONEncoder))
 
 
 def _photos(auction: Auction) -> list:
@@ -48,6 +62,29 @@ def auction_public(auction: Auction, now: datetime) -> dict:
         "min_next_bid_cents": auction.min_next_bid_cents,
         "bid_count": auction.bid_count,
         "server_time": now,
+    }
+
+
+def auction_state(auction: Auction, now: datetime) -> dict:
+    """AuctionState: AuctionPublic + líder (só para logados: sala e respostas de lance).
+
+    Mostra o NÚMERO e o rótulo anônimo do líder, nunca o id do usuário (D4).
+    """
+    leader = auction.leader
+    return {
+        **auction_public(auction, now),
+        "leader_number": leader.number if leader else None,
+        "leader_label": leader.label if leader else None,
+    }
+
+
+def bid_json(bid: Bid) -> dict:
+    """Bid do contrato. Data já em texto: a mesma forma no 201 e no replay gravado."""
+    return {
+        "id": str(bid.id),
+        "amount_cents": bid.amount_cents,
+        "bidder_label": bid.participant.label,
+        "created_at": iso_z(bid.created_at),
     }
 
 
