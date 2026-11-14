@@ -6,20 +6,71 @@ Hackathon CATI Cloud Labs. Time: Danilo, Amadeu, Bortoleto.
 (preencher: http://200.18.99.113:<porta-web>)
 
 ## Como recriar o ambiente do zero (RNF03)
-Passo a passo completo (dev e VM) em [docs/runbook.md](docs/runbook.md). Resumo em dev:
+Fluxo da VM (Ubuntu 24.04, 1 vCPU, ~1 GB de RAM). Desenvolvimento local e problemas comuns:
+[docs/runbook.md](docs/runbook.md).
+
+**1. Pré-requisitos:** Docker com o plugin Compose e 2 GB de swap (sem swap o build do front
+estoura a memória).
 
 ```bash
-cp .env.example .env && make db && make migrate
-make backend    # terminal 1: API em http://localhost:8000
-make worker     # terminal 2: abre e fecha leilões
-make doctor     # confere o ambiente
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
+
+**2. Código e configuração:**
+
+```bash
+git clone https://github.com/Gustag16/Hackathon-CatiJr.git
+cd Hackathon-CatiJr
+cp .env.example .env
+openssl rand -hex 32   # valor para DJANGO_SECRET_KEY
+```
+
+Edite no `.env` (os demais valores podem ficar como estão; o `.env` nunca é commitado):
+
+```
+DJANGO_SECRET_KEY=<saída do openssl>
+DJANGO_DEBUG=0
+DJANGO_ALLOWED_HOSTS=<IP da VM>,backend,localhost,127.0.0.1
+DJANGO_CSRF_TRUSTED_ORIGINS=http://<IP da VM>:<porta pública>
+```
+
+**3. Build e subida** (uma imagem por vez, para caber na memória):
+
+```bash
+docker compose build backend
+docker compose build caddy
+docker compose up -d
+```
+
+O backend aplica as migrações ao subir. Banco e fotos ficam em volumes Docker e sobrevivem a
+reinício e a `docker compose down`.
+
+**4. Dados de demonstração:**
+
+```bash
+docker compose exec backend python manage.py seed_demo
+```
+
+**5. Verificação:**
+
+```bash
+curl localhost:8080/api/health
+```
+
+Depois abra `http://<IP da VM>:<porta pública>` no navegador.
+
+**Atualizar:** `git pull` e refaça o build só do que mudou (`docker compose build backend` para
+`backend/`; `docker compose build caddy` para `frontend/` ou `deploy/`), depois `docker compose up -d`.
 
 Outros documentos: [arquitetura](docs/architecture.md) · [contrato da API](docs/contract.md) ·
 [roteiro da demo](docs/demo-script.md) · [pitch](docs/pitch.md) · [propostas em votação](docs/PROPOSTAS.md)
 
 ## Contas de demonstração (RNF04)
-Criadas por `make seed` (`python manage.py seed_demo`). Senha de todas: `leilao-demo-2026`.
+Criadas pelo `seed_demo` (passo 4). Senha de todas: `leilao-demo-2026`.
 
 | Papel | E-mail | Nome |
 |---|---|---|
@@ -30,7 +81,8 @@ Criadas por `make seed` (`python manage.py seed_demo`). Senha de todas: `leilao-
 
 Leilões: 25 em andamento (5 fecham em até 10 min), 40 agendados (6 abrem em até 5 min e duram 3),
 18 vendidos, 9 encerrados sem lances, 8 cancelados; 3 fotos cada. Rodar de novo não duplica;
-`python manage.py seed_demo --reset` recria com horários novos (usar pouco antes da demo).
+`docker compose exec backend python manage.py seed_demo --reset` recria com horários novos (usar
+pouco antes da demo).
 
 ## Decisões da equipe
 
