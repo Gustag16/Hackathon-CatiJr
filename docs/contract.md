@@ -1,22 +1,21 @@
-# Contrato da API e do WebSocket — v0 (PROPOSTA para revisão dos três)
+# Contrato da API e do WebSocket — v1
 
-Itens marcados com ⚠️ dependem de decisão da equipe (ver "Decisões em aberto" no fim).
+v1 de 14/11/2026. O que mudou desde a v0 está na seção 7. Decisões e seu status, na seção 6.
 Qualquer mudança neste arquivo é avisada no grupo ANTES de mexer no código.
 
 ## 1. Convenções
 
-- REST em `/api`, WebSocket em `/ws`. Tudo na mesma origem (Caddy na 8080). Sem CORS.
+- REST em `/api`, WebSocket em `/ws`, fotos em `/media`. Tudo na mesma origem (Caddy na 8080). Sem CORS.
 - JSON UTF-8, campos em `snake_case`, IDs em UUID (string).
-- **Dinheiro**: inteiro em centavos, campo termina em `_cents` (R$ 12,50 = `1250`). ⚠️ D1
+- **Dinheiro**: inteiro em centavos, campo termina em `_cents` (R$ 12,50 = `1250`). Nunca float. (D1, confirmado)
 - **Datas**: ISO 8601 UTC com `Z` (`2026-11-14T18:30:00Z`). O front converte para o fuso de quem vê.
-- **Sincronia de tempo**: todo objeto de estado de leilão traz `server_time`. O front
-  calcula `offset = server_time - Date.now()` ao receber e mostra o cronômetro com
-  `ends_at - (Date.now() + offset)`. O servidor NUNCA envia "ticks" de contagem regressiva.
-  O contador é só visual: quem decide se um lance é válido é o servidor (RF16).
-- **Autenticação**: cookie de sessão Django (`sessionid`, HttpOnly) + CSRF. ⚠️ D2
-  O front chama `GET /api/auth/csrf` uma vez; depois envia o cookie `csrftoken` no header
-  `X-CSRFToken` em todo POST/PATCH/DELETE. A sessão renova com o uso (expiração deslizante).
-- **Erros**: sempre `{ "code": "...", "message": "...", ...extras }` com o HTTP status abaixo.
+- **Sincronia de tempo**: todo objeto de estado de leilão traz `server_time`. O front calcula
+  `offset = server_time - Date.now()` ao receber e mostra o cronômetro com `ends_at - (Date.now() + offset)`.
+  O servidor NUNCA envia "ticks" de contagem regressiva. O contador é só visual (RF16).
+- **Autenticação**: cookie de sessão Django (`sessionid`, HttpOnly) + CSRF. Sessão de 1 hora com
+  expiração deslizante (renova a cada uso). O front chama `GET /api/auth/csrf` uma vez e envia o
+  cookie `csrftoken` no header `X-CSRFToken` em todo POST/PATCH/DELETE. Sessão expirada = `401`. (D2)
+- **Erros**: sempre `{ "code": "...", "message": "...", ...extras }`.
 
 | code | HTTP | quando |
 |---|---|---|
@@ -25,52 +24,59 @@ Qualquer mudança neste arquivo é avisada no grupo ANTES de mexer no código.
 | `FORBIDDEN` | 403 | logado, mas sem permissão (ex.: não é o comitente) |
 | `NOT_FOUND` | 404 | recurso inexistente |
 | `VALIDATION_ERROR` | 400 | corpo inválido; traz `fields: { campo: ["mensagem"] }` |
-| `EMAIL_TAKEN` | 409 | e-mail já cadastrado |
+| `EMAIL_TAKEN` | 409 | e-mail já cadastrado (comparação sem maiúsculas e sem espaços nas pontas) |
 | `CANNOT_CANCEL` | 409 | leilão com lances, já finalizado etc.; traz `reason` |
 | `RATE_LIMITED` | 429 | (Nível 2, RF13) traz `retry_after_ms` |
 
-Erros específicos de lance estão na seção 4.
+Erros específicos de lance: seção 4.
 
 ## 2. Objetos
 
+No banco, **Item** (nome, descrição, categoria, fotos) e **Leilão** (início, duração, preço inicial)
+são entidades separadas: um item pode ter vários leilões ao longo do tempo (RF28). Na API o leilão
+vem "achatado" com os campos do item, mais `item_id`.
+
 **User** `{ id, display_name, email, created_at }` (e-mail só para o próprio usuário)
 
-**PublicUser** `{ id, display_name }`
+**PublicUser** `{ id, display_name, created_at }`
 
-**Estados do leilão** (`status`): `scheduled | running | sold | ended_no_bids | cancelled`
+**status**: `scheduled | running | sold | ended_no_bids | cancelled`
 
-**AuctionState** (usado em REST e WS):
+**AuctionPublic** (qualquer visitante pode ver):
 ```json
 {
-  "id": "uuid",
-  "status": "running",
+  "id": "uuid", "item_id": "uuid", "status": "running",
   "starts_at": "2026-11-14T18:00:00Z",
   "ends_at": "2026-11-14T18:30:00Z",
   "original_ends_at": "2026-11-14T18:30:00Z",
   "current_price_cents": 12000,
   "min_next_bid_cents": 12500,
   "bid_count": 7,
-  "leader_id": "uuid | null",
-  "leader_label": "Dan*** | null",
   "server_time": "2026-11-14T18:12:03Z"
 }
 ```
-`min_next_bid_cents` é calculado só pelo servidor (RF14). O primeiro lance pode ser
-igual ao preço inicial. `leader_label` não expõe o nome completo (RF09). ⚠️ D4
+Antes do primeiro lance, `current_price_cents = start_price_cents` e `min_next_bid_cents = start_price_cents`
+(o primeiro lance pode ser igual ao preço inicial, RF14). Depois, o mínimo é calculado só pelo servidor.
+
+**AuctionState** (só dentro da sala e nas respostas de lance, ou seja, para logados) =
+AuctionPublic + `{ leader_id: uuid | null, leader_label: "Dan***" | null }`.
+`leader_label` não expõe o nome completo (RF09). (D4)
 
 **Bid** `{ id, amount_cents, bidder_label, created_at }`
 
-**AuctionSummary** (listagem):
-`{ id, name, category, cover_photo_url, status, starts_at, ends_at, current_price_cents, bid_count, seller: PublicUser }`
+**AuctionSummary** (listagem): `{ id, item_id, name, category, cover_photo_url, status, starts_at, ends_at, current_price_cents, bid_count, seller: PublicUser }`
 
-**AuctionDetail** = AuctionSummary + AuctionState + `{ description, photos: [{id, url}], start_price_cents, recent_bids: Bid[] (até 10, mais novo primeiro), result: null | { status, winner_label, final_price_cents } }`
+**AuctionDetail** = AuctionSummary + AuctionPublic + `{ description, photos: [{id, url}], start_price_cents, result: null | { status, winner_label, final_price_cents } }`.
+O detalhe público NÃO traz líder nem lances recentes: isso é conteúdo da sala (login). (RF04)
+
+Fotos: `url` relativa (`/media/...`), servida pelo Caddy direto do disco da VM.
 
 ## 3. REST
 
 ### Configuração
 | Método | Caminho | Auth | Resposta |
 |---|---|---|---|
-| GET | `/api/config` | não | `{ categories: [{id,name}], limits: { min_photos, max_photos, max_photo_bytes, accepted_photo_types, min_duration_seconds, max_duration_seconds, min_start_delay_seconds, max_start_advance_seconds }, server_time }` |
+| GET | `/api/config` | não | `{ categories: [{id,name}], limits: { min_photos, max_photos, max_photo_bytes, accepted_photo_types, max_name_length, max_description_length, min_duration_seconds, max_duration_seconds, min_start_delay_seconds, max_start_advance_seconds }, server_time }` |
 
 O front usa `limits` para validar no formulário igual ao servidor (RF05/RF06).
 
@@ -79,7 +85,7 @@ O front usa `limits` para validar no formulário igual ao servidor (RF05/RF06).
 |---|---|---|---|---|---|
 | GET | `/api/auth/csrf` | não | — | 204 (seta cookie `csrftoken`) | — |
 | POST | `/api/auth/register` | não | `{display_name, email, password}` | 201 `User` (não loga) | `VALIDATION_ERROR`, `EMAIL_TAKEN` |
-| POST | `/api/auth/login` | não | `{email, password}` | 200 `{ user, session_expires_at }` | `INVALID_CREDENTIALS` |
+| POST | `/api/auth/login` | não | `{email, password}` | 200 `{ user }` | `INVALID_CREDENTIALS` |
 | POST | `/api/auth/logout` | sim | — | 204 | — |
 | GET | `/api/auth/me` | sim | — | 200 `User` | `NOT_AUTHENTICATED` |
 
@@ -90,11 +96,12 @@ Todo usuário logado pode anunciar e dar lance (RF03). Não existe administrador
 |---|---|---|---|---|---|
 | GET | `/api/auctions` | não | `?status=scheduled,running&page=1&page_size=20` (Nível 2: `&q=&category=`) | 200 `{ results: AuctionSummary[], page, page_size, total, server_time }` | — |
 | GET | `/api/auctions/{id}` | não | — | 200 `AuctionDetail` | `NOT_FOUND` |
-| POST | `/api/auctions` | sim | `multipart/form-data`: `name, description, category, start_price_cents, starts_at, duration_seconds, photos` (arquivo, repetido ≥ `min_photos`) | 201 `AuctionDetail` | `VALIDATION_ERROR` |
+| POST | `/api/auctions` | sim | `multipart/form-data`: `name, description, category, start_price_cents, starts_at, duration_seconds, photos` (arquivo, repetido, de `min_photos` a `max_photos`) | 201 `AuctionDetail` (cria o Item e o 1º Leilão) | `VALIDATION_ERROR` |
 | POST | `/api/auctions/{id}/cancel` | sim (comitente) | — | 200 `AuctionDetail` | `FORBIDDEN`, `CANNOT_CANCEL` (`reason`: `HAS_BIDS` \| `ALREADY_FINISHED`) |
 
-Nível 2 (reservado, ainda sem formato): `PATCH /api/auctions/{id}` (RF23), `POST /api/auctions/{id}/relist` (RF28),
-`GET /api/me/participations` (RF27), `GET /api/users?q=` e `GET /api/users/{id}` (RF22).
+Nível 2 (reservado, ainda sem formato): `PATCH /api/auctions/{id}` (RF23), `POST /api/auctions/{id}/relist`
+(RF28; cria um novo Leilão para o MESMO Item), `GET /api/me/participations` (RF27),
+`GET /api/users?q=` e `GET /api/users/{id}` (RF22).
 
 ## 4. Lances
 
@@ -107,69 +114,103 @@ Headers: `Idempotency-Key: <uuid>` (obrigatório) e `X-CSRFToken`. Corpo: `{ "am
   "auction": { /* AuctionState */ } }
 ```
 
-**Recusado** — `409` (ou `401`/`403`) com `{ code, message, auction: AuctionState }`:
+**Recusa de negócio** — `409` com `{ code, message, auction: AuctionState }` (+ `min_bid_cents` em `BID_TOO_LOW`):
 
 | code | quando |
 |---|---|
-| `BID_TOO_LOW` | abaixo do mínimo vigente agora; traz `min_bid_cents` |
 | `AUCTION_NOT_RUNNING` | `scheduled` ou já finalizado/cancelado |
-| `AUCTION_ENDED` | passou do `ends_at` (horário do servidor) |
+| `AUCTION_ENDED` | `running`, mas `now >= ends_at` (o worker ainda não fechou) |
 | `IS_SELLER` | comitente tentando dar lance no próprio leilão |
 | `IS_LEADER` | já é o líder |
-| `NOT_IN_ROOM` | não está na sala como participante ⚠️ D3 |
-| `NOT_AUTHENTICATED` | sessão expirada |
-| `IDEMPOTENCY_KEY_MISMATCH` | mesma chave com `amount_cents` diferente |
+| `BID_TOO_LOW` | abaixo do mínimo vigente AGORA; traz `min_bid_cents` |
 
+Outros: `401 NOT_AUTHENTICATED`, `404 NOT_FOUND`, `400 VALIDATION_ERROR` (valor ou chave inválidos),
+`422 IDEMPOTENCY_KEY_MISMATCH`, `429 RATE_LIMITED` (Nível 2).
 Todo lance recusado informa o motivo e o lance mínimo atual (RF10). Lance é irrevogável.
 
-**Reenvio (RF12)**: a mesma `Idempotency-Key` devolve o resultado ORIGINAL (mesmo status
-e mesmo corpo, aceito OU recusado) com o header `Idempotent-Replay: true`, e nunca cria
-um 2º lance. Regras para o front:
-- gere a chave (`crypto.randomUUID()`) ao PREPARAR um lance;
-- reenvie com a MESMA chave só se for o mesmo envio (rede caiu, clique duplo);
-- após uma resposta definitiva (aceito ou recusado), o próximo lance usa chave NOVA.
+**Ordem das verificações** (o primeiro que falha define o código):
+1. sessão (401) → 2. leilão existe (404) → 3. corpo e chave válidos (400)
+4. chave já vista: replay ou `IDEMPOTENCY_KEY_MISMATCH` (422)
+5. limite de frequência (429, Nível 2)
+6. `AUCTION_NOT_RUNNING` / `AUCTION_ENDED` → 7. `IS_SELLER` → 8. `IS_LEADER` → 9. `BID_TOO_LOW`
+
+**Tempo**: o lance só é válido se `now < ends_at`, com `now` = relógio do servidor dentro da transação.
+O worker fecha quando `now >= ends_at`. Assim não há lacuna nem sobreposição.
+
+**Prorrogação (RF15)**: se, no lance aceito, `ends_at - now < 2 min`, então
+`ends_at = min(now + 2 min, original_ends_at + 30 min)`. Nesse caso o evento WS traz `extended: true`.
+
+### Idempotência (RF12)
+- O front gera a chave (`crypto.randomUUID()`) ao PREPARAR um lance.
+- O servidor guarda, por `(usuário, chave)`, a impressão digital `(auction_id, amount_cents)` e o resultado
+  **definitivo**: o `201` e os `409`. Só esses são gravados.
+- **Mesma chave + mesmo `(auction_id, amount_cents)`** = replay: devolve o MESMO status, o MESMO `code`/`message`/`bid`
+  originais, mais um `auction` ATUAL (e `min_bid_cents` atual em `BID_TOO_LOW`), com o header
+  `Idempotent-Replay: true`. Nunca cria um 2º lance.
+- **Mesma chave + outro leilão ou outro valor** = `422 IDEMPOTENCY_KEY_MISMATCH`.
+- Respostas **não definitivas**: `401`, `429`, `5xx` e falha de rede. Nesses casos o front reenvia o MESMO lance
+  com a MESMA chave (depois de logar de novo, no caso do 401). `429` nunca é gravado como resultado.
+- Depois de um `201` ou `409`, o PRÓXIMO lance usa chave NOVA. Se o usuário muda o valor, é chave nova.
+
+### Limite de frequência (Nível 2, RF13)
+Por usuário (nunca por IP, para usuários diferentes não se bloquearem), mínimo de 500 ms entre lances do mesmo
+usuário. Replay é checado ANTES do limite, então o reenvio legítimo não é punido.
 
 ## 5. WebSocket da sala
 
-URL: `/ws/auctions/{id}/?role=participant|spectator` (padrão `participant`; o comitente
-só entra como `spectator`). Autentica pelo cookie de sessão.
-Fechamento: `4401` sem sessão · `4404` leilão inexistente.
+URL: `/ws/auctions/{id}/`. Autentica pelo cookie de sessão. Fechamento: `4401` sem sessão · `4404` leilão inexistente.
+Pode-se entrar na sala de um leilão `scheduled` (para ver o `auction_started` ao vivo), `running` ou já finalizado
+(o `snapshot` traz o resultado). No Núcleo todo usuário logado entra como participante, inclusive o comitente
+(ele vê a sala e leva `IS_SELLER` se tentar dar lance). Espectador e presença: Nível 2.
 
 ### Servidor → cliente
-Todas as mensagens: `{ "type": "...", ... , "server_time": "..." }`
+Todas as mensagens: `{ "type": "...", ..., "server_time": "..." }`
 
 | type | campos | quando |
 |---|---|---|
-| `snapshot` | `auction: AuctionState`, `recent_bids: Bid[]`, `presence: {participants, spectators}` | ao conectar e após `resync` |
+| `snapshot` | `auction: AuctionState`, `recent_bids: Bid[]` (até 10, mais novo primeiro), `result` (se finalizado) | ao conectar e após `resync` |
 | `bid_accepted` | `bid: Bid`, `auction: AuctionState`, `extended: bool` | após o COMMIT de um lance (nunca antes) |
 | `auction_started` | `auction: AuctionState` | worker abriu o leilão |
 | `auction_finished` | `auction: AuctionState`, `result: {status, winner_label, final_price_cents}` | fechou (`sold` ou `ended_no_bids`) |
 | `auction_cancelled` | `auction: AuctionState` | comitente cancelou |
-| `presence` | `participants`, `spectators` | alguém entrou/saiu/trocou de papel (Nível 2) |
-| `outbid` | `auction_id`, `your_bid_cents`, `new_price_cents` | só para quem foi superado (Nível 2, RF26) |
 | `error` | `code`, `message` | mensagem inválida do cliente |
+| `presence` | `participants`, `spectators` | (Nível 2, RF25) |
+| `outbid` | `auction_id`, `your_bid_cents`, `new_price_cents` | só para quem foi superado (Nível 2, RF26) |
 
-Prorrogação: quando `extended = true`, o `ends_at` novo vem em `auction`; o cronômetro
-só recalcula com o novo `ends_at`.
+Prorrogação: com `extended = true` o `ends_at` novo vem em `auction`; o cronômetro só recalcula com o novo `ends_at`.
 
 ### Cliente → servidor
 | type | campos | efeito |
 |---|---|---|
-| `set_role` | `role: "participant" \| "spectator"` | troca de papel sem sair da sala (Nível 2, RF25) |
 | `resync` | — | pede novo `snapshot` |
-| `ping` | — | mantém a conexão; servidor responde `{type:"pong"}` |
+| `ping` | — | servidor responde `{type:"pong"}` |
+| `set_role` | `role: "participant" \| "spectator"` | (Nível 2, RF25) |
 
-Lances NÃO são enviados pelo WebSocket: são POST HTTP (seção 4).
+Lances NÃO vão pelo WebSocket: são POST HTTP (seção 4).
 
 ### Reconexão (RF24)
-No `onclose`, reconectar com backoff (1s, 2s, 4s…, máx. 5s). No `onopen` o servidor já
-envia `snapshot`. Enquanto desconectado, o front mostra "reconectando…" e desabilita o botão de lance.
+No `onclose`, reconectar com backoff (1s, 2s, 4s…, máx. 5s). No `onopen` o servidor já envia `snapshot`.
+Enquanto desconectado, o front mostra "reconectando…" e desabilita o botão de lance.
 
-## 6. Decisões em aberto (confirmar e registrar em `docs/decisions.md`)
+## 6. Decisões
 
-- **D1 Dinheiro:** centavos inteiros (proposto) vs `Decimal(12,2)` serializado como string. Back e front precisam usar o MESMO.
-- **D2 Autenticação:** sessão + CSRF (proposto; o WS reaproveita o cookie) vs token/JWT.
-- **D3 "Estar na sala" (RF10 cond. 1):** conectado ao WS como `participant` (proposto) vs apenas ter sessão válida (mais simples).
-- **D4 `leader_label`:** como identificar o líder sem expor o nome completo (ex.: `"Dan***"`, ou `"Participante 3"` por leilão).
-- **D5 Fotos:** upload multipart pelo backend para o storage da organização; tipo do storage (S3-compatível?) a confirmar.
-- **D6 Limites:** valores de `limits` (fotos, tamanhos, duração, antecedência) e a lista de categorias.
+| # | Decisão | Status |
+|---|---|---|
+| D1 | Dinheiro em centavos inteiros | **Confirmado** |
+| D2 | Sessão Django + CSRF, 1 h deslizante | Proposto |
+| D3 | "Estar na sala" (RF10) = sessão válida; a sala exige login. Sem presença por WS | Proposto |
+| D4 | Formato do `leader_label` (ex.: `Dan***`, ou `Participante 3` por leilão) | A definir |
+| D5 | Fotos no disco local da VM (adendo da organização ao PDF), volume Docker servido pelo Caddy, só o caminho no banco | **Confirmado** |
+| D6 | Limites: nome ≤ 100, descrição ≤ 2000, 3–8 fotos jpeg/png/webp ≤ 5 MB, duração ≥ 60 s, início ≥ 60 s à frente; categorias a escolher | Proposto |
+
+## 7. O que mudou da v0 para a v1
+
+- Item e Leilão separados no banco; `item_id` na API; `relist` cria novo Leilão do mesmo Item.
+- `PublicUser` ganhou `created_at`. `limits` ganhou `max_name_length` e `max_description_length`.
+- Detalhe público sem líder e sem lances recentes (isso é da sala). `AuctionPublic` x `AuctionState`.
+- Login não devolve mais `session_expires_at`.
+- Removido `NOT_IN_ROOM`. Sem `?role=` no Núcleo; comitente entra como participante.
+- Idempotência: só 201 e 409 são definitivos; 401/429/5xx/rede reenviam com a MESMA chave; replay devolve `auction` atual;
+  `IDEMPOTENCY_KEY_MISMATCH` compara `auction_id` e `amount_cents` (422).
+- Ordem das verificações, regra `now < ends_at` e fórmula da prorrogação explícitas. `RATE_LIMITED` na seção de lances.
+- Fotos locais (D5): `url` relativa `/media/...`.
