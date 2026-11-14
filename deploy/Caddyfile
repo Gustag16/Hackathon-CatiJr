@@ -1,0 +1,22 @@
+:8022 {
+    # WebSocket (/ws/auctions/{id}/) -> Back-end na porta 8022
+    handle /ws/* {
+        reverse_proxy backend:8022
+    }
+
+    # REST API -> Back-end na porta 8022
+    handle /api/* {
+        reverse_proxy backend:8022
+    }
+
+    # Mídia local (D5)
+    handle /media/* {
+        root * /srv
+        file_server
+    }
+
+    # Front-end na mesma origem (8082)
+    handle {
+        reverse_proxy frontend:80 # ou root * /srv/frontend + file_server, se build estático
+    }
+}
