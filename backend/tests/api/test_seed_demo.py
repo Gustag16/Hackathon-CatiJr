@@ -50,6 +50,21 @@ def test_cada_item_tem_3_fotos_no_disco(seeded, media):
             assert path.is_file() and path.suffix == ".jpg" and media in path.parents
 
 
+def test_itens_mapeados_usam_a_foto_real(seeded):
+    from auctions.management.commands.seed_demo import REAL_PHOTOS, SEED_PHOTOS_DIR
+
+    assert len(REAL_PHOTOS) == 4
+    for base_name, filename in REAL_PHOTOS.items():
+        original = (SEED_PHOTOS_DIR / filename).read_bytes()
+        assert original[:3] == b"\xff\xd8\xff"  # JPEG pelo conteúdo
+        photos = ItemPhoto.objects.filter(item__name__startswith=f"{base_name} (lote")
+        assert photos.count() >= 3
+        for photo in photos:
+            assert Path(photo.file.path).read_bytes() == original
+    generated = ItemPhoto.objects.filter(item__name__startswith="Notebook usado").first()
+    assert Path(generated.file.path).stat().st_size < 60_000  # continua a foto gerada
+
+
 def test_horarios_coerentes_com_o_status(seeded):
     now = seeded
     for auction in Auction.objects.all():

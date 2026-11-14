@@ -16,9 +16,12 @@ import random
 import textwrap
 import unicodedata
 from datetime import timedelta
+from functools import cache
+from pathlib import Path
 
+from django.conf import settings
 from django.core.files.base import ContentFile
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from PIL import Image, ImageDraw, ImageFont
 
@@ -72,6 +75,15 @@ CATALOG = [
     ("outros", "Mala de viagem de couro", 28_000),
     ("outros", "Máquina de costura antiga", 48_000),
 ]
+# Fotos reais (em `auctions/seed_photos/`, dentro da imagem Docker) por NOME base do item.
+# Itens fora deste dicionário continuam com a foto gerada por `_photo`.
+SEED_PHOTOS_DIR = Path(__file__).resolve().parents[2] / "seed_photos"
+REAL_PHOTOS = {
+    "Fusca 1974 azul": "porsche.jpg",
+    "Poltrona de couro": "chair.jpg",
+    "Câmera fotográfica analógica": "camera.jpg",
+    "Moeda comemorativa de prata": "watch.jpg",
+}
 CATEGORY_COLORS = {
     "automoveis": (52, 101, 164),
     "moveis": (143, 89, 2),
@@ -170,9 +182,9 @@ def _create_auctions(seller, buyers, rng: random.Random) -> None:
                 category=category,
             )
             for index in range(3):
-                ItemPhoto.objects.create(
-                    item=item, file=_photo(name, category, index), position=index
-                )
+                real = REAL_PHOTOS.get(base_name)
+                file = _real_photo(real) if real else _photo(name, category, index)
+                ItemPhoto.objects.create(item=item, file=file, position=index)
             auction = Auction.objects.create(
                 item=item,
                 status=status,
@@ -249,6 +261,33 @@ def _bids(auction: Auction, buyers, count: int, last_time, rng: random.Random) -
 def _ascii(text: str) -> str:
     """A fonte embutida do Pillow não tem acentos ("Relógio" sairia com um quadrado)."""
     return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+
+
+@cache
+def _real_photo_bytes(filename: str) -> bytes:
+    """Lê a foto real do disco uma vez, conferindo pelo CONTEÚDO que é JPEG e cabe no limite."""
+    path = SEED_PHOTOS_DIR / filename
+    try:
+        content = path.read_bytes()
+    except OSError as exc:
+        raise CommandError(f"Foto de demonstração ausente: {path}") from exc
+    limit = settings.AUCTION_LIMITS["max_photo_bytes"]
+    if len(content) >= limit:
+        raise CommandError(f"{filename}: {len(content)} bytes, o limite é {limit}.")
+    try:
+        with Image.open(io.BytesIO(content)) as image:
+            image_format = image.format
+            image.verify()
+    except Exception as exc:
+        raise CommandError(f"{filename} não é uma imagem válida.") from exc
+    if image_format != "JPEG":
+        raise CommandError(f"{filename} não é JPEG (é {image_format}).")
+    return content
+
+
+def _real_photo(filename: str) -> ContentFile:
+    """Cada ItemPhoto ganha sua própria cópia em `items/<uuid>.jpg` (o --reset apaga todas)."""
+    return ContentFile(_real_photo_bytes(filename), name="foto.jpg")
 
 
 def _photo(name: str, category: str, index: int) -> ContentFile:
