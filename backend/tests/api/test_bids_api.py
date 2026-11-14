@@ -82,3 +82,51 @@ def test_lance_prorroga_e_devolve_o_novo_termino(logged, make_auction, clock):
     body = post_bid(client, auction.id).json()
     assert body["auction"]["ends_at"] == "2030-01-01T12:02:00Z"  # now + 2 min
     assert body["auction"]["original_ends_at"] == "2030-01-01T12:00:30Z"
+
+
+# ---------- idempotência pela API (RF12) ----------
+
+
+def test_replay_traz_o_header(logged, make_auction):
+    client, _ = logged
+    auction, key = make_auction(), uuid.uuid4()
+    first = post_bid(client, auction.id, key=key)
+    again = post_bid(client, auction.id, key=key)
+    assert again.status_code == 201 and again.headers["Idempotent-Replay"] == "true"
+    assert again.json()["bid"] == first.json()["bid"]
+
+
+def test_mismatch_422(logged, make_auction):
+    client, _ = logged
+    auction, key = make_auction(), uuid.uuid4()
+    post_bid(client, auction.id, key=key)
+    response = post_bid(client, auction.id, amount=20_000, key=key)
+    assert response.status_code == 422
+    assert response.json()["code"] == "IDEMPOTENCY_KEY_MISMATCH"
+
+
+def test_401_nao_e_gravado_e_o_reenvio_apos_login_processa(make_auction, make_user):
+    """Sessão expirada (RF12): o front loga de novo e reenvia com a MESMA chave."""
+    from auctions.models import Bid, IdempotencyRecord
+
+    from .conftest import PASSWORD
+
+    user, auction, key = make_user(), make_auction(), uuid.uuid4()
+    client = APIClient()
+    assert post_bid(client, auction.id, key=key).status_code == 401
+    assert IdempotencyRecord.objects.count() == 0
+
+    client.login(username=user.email, password=PASSWORD)
+    response = post_bid(client, auction.id, key=key)
+    assert response.status_code == 201 and "Idempotent-Replay" not in response.headers
+    assert Bid.objects.count() == 1
+
+
+def test_400_nao_e_gravado(logged, make_auction):
+    from auctions.models import IdempotencyRecord
+
+    client, _ = logged
+    auction, key = make_auction(), uuid.uuid4()
+    post_bid(client, auction.id, amount=1.5, key=key)
+    assert IdempotencyRecord.objects.count() == 0
+    assert post_bid(client, auction.id, key=key).status_code == 201

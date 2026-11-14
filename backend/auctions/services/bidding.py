@@ -8,11 +8,17 @@ toca no mesmo leilão: eles esperam na fila da trava. É isso que garante o RF11
 import uuid
 from dataclasses import dataclass
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
-from auctions.models import Auction, AuctionParticipant, AuctionStatus, Bid
+from auctions.models import (
+    Auction,
+    AuctionParticipant,
+    AuctionStatus,
+    Bid,
+    IdempotencyRecord,
+)
 from auctions.rules.extension import extended_ends_at, was_extended
-from auctions.serializers import auction_state, bid_json
+from auctions.serializers import auction_state, bid_json, jsonable
 
 from . import clock
 from .broadcast import announce_after_commit
@@ -23,6 +29,10 @@ REFUSALS = {
     "IS_SELLER": "Você não pode dar lance no seu próprio leilão.",
     "IS_LEADER": "Você já é o líder deste leilão.",
     "BID_TOO_LOW": "Lance abaixo do mínimo atual.",
+}
+MISMATCH = {
+    "code": "IDEMPOTENCY_KEY_MISMATCH",
+    "message": "Esta chave já foi usada para outro lance. Gere uma chave nova.",
 }
 
 
@@ -50,7 +60,17 @@ def place_bid(
     """
     if type(amount_cents) is not int:
         raise TypeError("amount_cents deve ser int em centavos")  # RF19: nunca float
+    try:
+        return _place_bid_once(user, auction_id, amount_cents, idempotency_key)
+    except IntegrityError:
+        # Só acontece se a MESMA chave chegar ao mesmo tempo para DOIS leilões diferentes
+        # (cada um com sua trava): o UNIQUE(usuário, chave) do banco deixa um só gravar.
+        # A transação do outro foi desfeita inteira (lance incluído); na 2ª tentativa ele
+        # encontra a chave gravada e recebe replay ou 422.
+        return _place_bid_once(user, auction_id, amount_cents, idempotency_key)
 
+
+def _place_bid_once(user, auction_id, amount_cents: int, key: uuid.UUID) -> BidOutcome:
     with transaction.atomic():
         # 1. Trava a linha do leilão. Daqui até o COMMIT ninguém mais mexe neste leilão.
         auction = (
@@ -62,11 +82,43 @@ def place_bid(
         #    que é processado, não pela hora em que chegou (RF10, RF16).
         now = clock.now()
 
+        # 3. Chave já vista? (contrato, passo 4: ANTES das regras de negócio). Dois envios
+        #    simultâneos da mesma chave no mesmo leilão chegam aqui um de cada vez (a trava),
+        #    então o 2º sempre encontra o registro do 1º.
+        record = IdempotencyRecord.objects.filter(user=user, key=key).first()
+        if record is not None:
+            return _replay(record, auction, amount_cents, now)
+
         participant = AuctionParticipant.objects.filter(auction=auction, user=user).first()
         code = _refusal(auction, user, participant, amount_cents, now)
         if code is not None:
-            return _refused(code, auction, now)
-        return _accept(auction, user, participant, amount_cents, now)
+            outcome = _refused(code, auction, now)
+            original = {"code": code, "message": outcome.body["message"]}
+        else:
+            outcome = _accept(auction, user, participant, amount_cents, now)
+            original = {"bid": outcome.body["bid"], "you": outcome.body["you"]}
+
+        # 4. Resultado DEFINITIVO (201 ou 409) gravado na mesma transação do lance: ou os
+        #    dois existem, ou nenhum. 401, 429 e 5xx nunca chegam aqui.
+        IdempotencyRecord.objects.create(
+            user=user,
+            key=key,
+            auction=auction,
+            amount_cents=amount_cents,
+            status_code=outcome.status_code,
+            response_body=jsonable(original),
+        )
+        return outcome
+
+
+def _replay(record: IdempotencyRecord, auction: Auction, amount_cents: int, now) -> BidOutcome:
+    """Mesma chave: devolve o resultado ORIGINAL + o estado ATUAL do leilão (RF12)."""
+    if (record.auction_id, record.amount_cents) != (auction.id, amount_cents):
+        return BidOutcome(422, dict(MISMATCH))  # não é gravado: a chave continua do original
+    body = {**record.response_body, "auction": auction_state(auction, now)}
+    if body.get("code") == "BID_TOO_LOW":
+        body["min_bid_cents"] = auction.min_next_bid_cents  # mínimo atual (RF10)
+    return BidOutcome(record.status_code, body, replay=True)
 
 
 def _refusal(auction, user, participant, amount_cents: int, now) -> str | None:
