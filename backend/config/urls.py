@@ -7,6 +7,7 @@ from .health import health
 api_patterns = [
     path("health", health, name="health"),
     path("auth/", include("accounts.urls")),
+    path("", include("auctions.urls")),
 ]
 
 urlpatterns = [path("api/", include(api_patterns))]
