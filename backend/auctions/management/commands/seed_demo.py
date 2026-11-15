@@ -2,6 +2,7 @@
 
     python manage.py seed_demo           # cria só se ainda não existe (rodar 2x não duplica)
     python manage.py seed_demo --reset   # apaga os leilões de demonstração e recria
+    python manage.py seed_demo --photos  # só troca as fotos dos leilões que já existem
 
 Os horários são relativos ao relógio do servidor no momento do comando. Use `--reset` pouco
 antes da demo para ter leilões curtos abrindo e fechando na frente da banca.
@@ -83,6 +84,29 @@ REAL_PHOTOS = {
     "Poltrona de couro": "chair.jpg",
     "Câmera fotográfica analógica": "camera.jpg",
     "Moeda comemorativa de prata": "watch.jpg",
+    # Wikimedia Commons, licenças livres: autores em seed_photos/CREDITS.md
+    "Bicicleta elétrica urbana": "bicicleta.jpg",
+    "Capacete de moto vintage": "capacete.jpg",
+    "Jogo de rodas aro 15": "rodas.jpg",
+    "Mesa de jantar de madeira maciça": "mesa.jpg",
+    "Cadeira de escritório": "cadeira-escritorio.jpg",
+    "Notebook usado": "notebook.jpg",
+    "Console de videogame": "console.jpg",
+    "Fone de ouvido sem fio": "fone.jpg",
+    "Rádio antigo a válvula": "radio.jpg",
+    "Quadro a óleo de paisagem": "quadro.jpg",
+    "Escultura em pedra-sabão": "escultura.jpg",
+    "Gravura numerada": "gravura.jpg",
+    "Violão de nylon": "violao.jpg",
+    "Teclado musical 61 teclas": "teclado.jpg",
+    "Kit de pesca completo": "pesca.jpg",
+    "Disco de vinil raro": "vinil.jpg",
+    "Álbum de figurinhas completo": "album.jpg",
+    "Selo postal antigo": "selo.jpg",
+    "Miniatura de carro de corrida": "miniatura.jpg",
+    "Relógio de bolso": "relogio-bolso.jpg",
+    "Mala de viagem de couro": "mala.jpg",
+    "Máquina de costura antiga": "costura.jpg",
 }
 CATEGORY_COLORS = {
     "automoveis": (52, 101, 164),
@@ -117,8 +141,18 @@ class Command(BaseCommand):
             "--reset", action="store_true", help="apaga os leilões de demonstração e recria"
         )
 
-    def handle(self, *args, reset: bool = False, **options):
+        parser.add_argument(
+            "--photos",
+            action="store_true",
+            help="troca as fotos dos leilões de demonstração já criados, sem mexer em lances",
+        )
+
+    def handle(self, *args, reset: bool = False, photos: bool = False, **options):
         seller, buyers = self._accounts()
+        if photos:
+            changed = _refresh_photos(seller)
+            self.stdout.write(self.style.SUCCESS(f"Fotos trocadas em {changed} itens."))
+            return
         if reset:
             removed = _delete_demo_auctions(seller)
             self.stdout.write(f"Removidos {removed} leilões de demonstração.")
@@ -163,6 +197,26 @@ def _delete_demo_auctions(seller) -> int:
         photo.file.delete(save=False)  # apaga o arquivo do disco, não só a linha
     items.delete()
     return count
+
+
+def _refresh_photos(seller) -> int:
+    """Troca os arquivos das fotos dos itens de demonstração que têm foto real mapeada.
+
+    Não toca em leilão, lance nem horário: serve para atualizar a VM sem `--reset`.
+    O arquivo antigo só é apagado depois que o novo foi gravado e a linha atualizada.
+    """
+    changed = 0
+    for item in Item.objects.filter(seller=seller).prefetch_related("photos"):
+        base_name = item.name.split(" (lote ")[0]
+        real = REAL_PHOTOS.get(base_name)
+        if real is None:
+            continue
+        for photo in item.photos.all():
+            old_name = photo.file.name
+            photo.file.save("foto.jpg", _real_photo(real), save=True)
+            photo.file.storage.delete(old_name)
+        changed += 1
+    return changed
 
 
 @transaction.atomic

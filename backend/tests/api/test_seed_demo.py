@@ -53,7 +53,7 @@ def test_cada_item_tem_3_fotos_no_disco(seeded, media):
 def test_itens_mapeados_usam_a_foto_real(seeded):
     from auctions.management.commands.seed_demo import REAL_PHOTOS, SEED_PHOTOS_DIR
 
-    assert len(REAL_PHOTOS) == 4
+    assert len(REAL_PHOTOS) == 26
     for base_name, filename in REAL_PHOTOS.items():
         original = (SEED_PHOTOS_DIR / filename).read_bytes()
         assert original[:3] == b"\xff\xd8\xff"  # JPEG pelo conteúdo
@@ -61,8 +61,31 @@ def test_itens_mapeados_usam_a_foto_real(seeded):
         assert photos.count() >= 3
         for photo in photos:
             assert Path(photo.file.path).read_bytes() == original
-    generated = ItemPhoto.objects.filter(item__name__startswith="Notebook usado").first()
+    generated = ItemPhoto.objects.filter(item__name__startswith="Estante de ferro").first()
     assert Path(generated.file.path).stat().st_size < 60_000  # continua a foto gerada
+
+
+def test_photos_troca_as_fotos_sem_mexer_nos_leiloes(seeded, media, monkeypatch):
+    from auctions.management.commands import seed_demo
+
+    before = list(Auction.objects.order_by("id").values_list("id", "ends_at", "bid_count"))
+    # simula um banco antigo: as fotos do notebook ainda eram as geradas
+    photos = ItemPhoto.objects.filter(item__name__startswith="Notebook usado")
+    for photo in photos:
+        photo.file.save("foto.jpg", seed_demo._photo("Notebook", "eletronicos", 0), save=True)
+    old_files = {p.file.path for p in ItemPhoto.objects.all()}
+
+    call_command("seed_demo", photos=True, stdout=io.StringIO())
+
+    assert before == list(Auction.objects.order_by("id").values_list("id", "ends_at", "bid_count"))
+    assert ItemPhoto.objects.count() == 300
+    original = (seed_demo.SEED_PHOTOS_DIR / "notebook.jpg").read_bytes()
+    for photo in ItemPhoto.objects.filter(item__name__startswith="Notebook usado"):
+        assert Path(photo.file.path).read_bytes() == original
+    new_files = {p.file.path for p in ItemPhoto.objects.all()}
+    assert not any(Path(path).exists() for path in old_files - new_files)
+    assert len(list((media / "items").iterdir())) >= 300  # nada referenciado sumiu
+    assert all(Path(path).is_file() for path in new_files)
 
 
 def test_horarios_coerentes_com_o_status(seeded):
