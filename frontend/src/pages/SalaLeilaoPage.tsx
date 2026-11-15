@@ -8,6 +8,7 @@ import { FormularioLance } from '../components/salaLeilao/FormularioLance'
 import { HistoricoLances } from '../components/salaLeilao/HistoricoLances'
 import { ModalCancelar } from '../components/salaLeilao/ModalCancelar'
 import {
+  bidsLabel,
   canCancel,
   categoryLabel,
   definitiveBidResponse,
@@ -57,6 +58,7 @@ export function SalaLeilaoPage({ id }: { id: string }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [connected, setConnected] = useState(false)
+  const [everConnected, setEverConnected] = useState(false)
   const [participant, setParticipant] = useState<number | null>(null)
   const participantRef = useRef<number | null>(null)
   const [bids, setBids] = useState<Bid[]>([])
@@ -108,7 +110,10 @@ export function SalaLeilaoPage({ id }: { id: string }) {
     if (!userId || !hasAuction) return
 
     return connectAuctionRoomWs(id, {
-      onConnectionChange: setConnected,
+      onConnectionChange: (value) => {
+        setConnected(value)
+        if (value) setEverConnected(true)
+      },
       onEvent: (event) => {
         if (event.type === 'snapshot') {
           participantRef.current = event.you?.participant_number ?? null
@@ -278,6 +283,24 @@ export function SalaLeilaoPage({ id }: { id: string }) {
     auction.status !== 'running' ||
     auction.min_next_bid_cents === undefined ||
     rateLimited
+  const finished = ['sold', 'ended_no_bids', 'cancelled'].includes(
+    auction.status,
+  )
+  const isSeller = user?.id === auction.seller.id
+  const photos = auction.photos || []
+  const endedAt = new Date(auction.ends_at).toLocaleString('pt-BR')
+  const outcome =
+    auction.status === 'sold'
+      ? `Arrematado por ${
+          auction.result?.winner_label ?? auction.leader_label ?? 'um participante'
+        } por ${money(
+          auction.result?.final_price_cents ?? auction.current_price_cents,
+        )}.`
+      : auction.status === 'ended_no_bids'
+        ? 'Leilão encerrado sem lances.'
+        : auction.status === 'cancelled'
+          ? 'Este leilão foi cancelado pelo comitente.'
+          : ''
 
   return (
     <main className="page-width py-8">
@@ -289,7 +312,9 @@ export function SalaLeilaoPage({ id }: { id: string }) {
           <span className="text-xs text-muted-foreground">
             {categoryLabel(auction.category)}
           </span>
-          <h1 className="mt-2 text-3xl font-extrabold">{auction.name}</h1>
+          <h1 className="mt-2 break-words text-3xl font-extrabold">
+            {auction.name}
+          </h1>
           <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
             <Icon name="user" className="h-4 w-4" />
             {auction.seller.display_name}
@@ -298,7 +323,8 @@ export function SalaLeilaoPage({ id }: { id: string }) {
         <StatusBadge status={auction.status} />
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
+      {/* No celular a ordem é foto, painel de lance, descrição; no desktop o painel fica à direita. */}
+      <div className="grid items-start gap-8 lg:grid-cols-[1.4fr_1fr] lg:grid-rows-[auto_1fr]">
         <section>
           <img
             src={photo}
@@ -307,90 +333,102 @@ export function SalaLeilaoPage({ id }: { id: string }) {
             height={768}
             className="aspect-[4/3] w-full rounded-lg bg-muted object-cover"
           />
-          <div className="mt-3 flex flex-wrap gap-3">
-            {(auction.photos || []).map((p) => (
-              <Button
-                key={p.id}
-                variant="outline"
-                aria-label={`Ver foto ${p.id}`}
-                onClick={() => setPhoto(p.url)}
-                className={`overflow-hidden p-0 ${
-                  photo === p.url ? 'ring-2 ring-primary' : ''
-                }`}
-              >
-                <img
-                  src={p.url}
-                  alt={`Miniatura ${p.id}`}
-                  className="h-16 w-20 object-cover"
-                />
-              </Button>
-            ))}
-          </div>
-          <h2 className="mb-3 mt-8 text-lg font-extrabold">Sobre o item</h2>
-          <p className="whitespace-pre-line text-sm leading-7 text-muted-foreground">
-            {auction.description}
-          </p>
-          <div className="mt-7 border-t border-border pt-5 text-xs text-muted-foreground">
-            Início: {new Date(auction.starts_at).toLocaleString('pt-BR')}
-            <br />
-            Encerramento: {new Date(auction.ends_at).toLocaleString('pt-BR')}
-          </div>
+          {photos.length > 1 && (
+            <div className="mt-3 flex flex-wrap gap-3">
+              {photos.map((p, index) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-label={`Ver foto ${index + 1} de ${photos.length}`}
+                  aria-pressed={photo === p.url}
+                  onClick={() => setPhoto(p.url)}
+                  className="photo-thumb"
+                >
+                  <img
+                    src={p.url}
+                    alt=""
+                    loading="lazy"
+                    className="h-16 w-20 object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
-        <section>
+        <section className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <div className="rounded-lg border border-border bg-card p-6">
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>
-                {auction.status === 'scheduled'
-                  ? 'Começa em'
-                  : 'Tempo restante'}
+                {finished
+                  ? 'Leilão encerrado'
+                  : auction.status === 'scheduled'
+                    ? 'Começa em'
+                    : 'Tempo restante'}
               </span>
-              <span>{auction.bid_count} lances</span>
+              <span>{bidsLabel(auction.bid_count)}</span>
             </div>
             <div className="mt-3">
-              <Cronometro
-                end={
-                  auction.status === 'scheduled'
-                    ? auction.starts_at
-                    : auction.ends_at
-                }
-                status={auction.status}
-                large
-              />
+              {finished ? (
+                <p className="py-2 text-sm font-semibold text-muted-foreground">
+                  {auction.status === 'cancelled'
+                    ? 'Cancelado antes do término.'
+                    : `Encerrado em ${endedAt}`}
+                </p>
+              ) : (
+                <Cronometro
+                  end={
+                    auction.status === 'scheduled'
+                      ? auction.starts_at
+                      : auction.ends_at
+                  }
+                  status={auction.status}
+                  large
+                />
+              )}
             </div>
             <div className="my-5 border-t border-border pt-5">
               <p className="text-xs text-muted-foreground">
-                {auction.bid_count === 0 ? 'Lance inicial' : 'Lance atual'}
+                {auction.status === 'sold'
+                  ? 'Valor final'
+                  : auction.bid_count === 0
+                    ? 'Lance inicial'
+                    : 'Lance atual'}
               </p>
-              <p className="mt-2 text-4xl font-extrabold">
+              <p className="mt-2 text-4xl font-extrabold tabular-nums">
                 {money(auction.current_price_cents)}
               </p>
             </div>
-            {auction.result && (
+            {outcome && (
               <div className="mb-4">
-                <Notice>
-                  {auction.result.status === 'sold'
-                    ? `Arrematado por ${auction.result.winner_label} por ${money(
-                        auction.result.final_price_cents || 0,
-                      )}.`
-                    : 'Leilão encerrado sem arremate.'}
-                </Notice>
+                <Notice>{outcome}</Notice>
               </div>
             )}
-            {user && (
+            {user && !finished && (
               <>
-                <p
-                  className={`mb-4 text-xs font-bold ${
-                    lead ? 'text-success' : 'text-muted-foreground'
-                  }`}
-                >
-                  {lead
-                    ? `Você lidera! (#${participant})`
-                    : formatLeaderText(auction)}
-                </p>
+                {auction.status === 'running' && (
+                  <p
+                    className={`mb-4 text-xs font-bold ${
+                      lead ? 'text-success' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {lead
+                      ? `Você lidera! (#${participant})`
+                      : formatLeaderText(auction)}
+                  </p>
+                )}
                 {!connected && (
-                  <p role="status" className="mb-4 text-xs text-destructive">
-                    Reconectando...
+                  <p
+                    role="status"
+                    className={`mb-4 text-xs ${
+                      everConnected
+                        ? 'text-destructive'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {everConnected
+                      ? 'Reconectando… os lances ficam desabilitados até a conexão voltar.'
+                      : 'Conectando à sala…'}
                   </p>
                 )}
               </>
@@ -406,22 +444,42 @@ export function SalaLeilaoPage({ id }: { id: string }) {
               </p>
             )}
 
-            <FormularioLance
-              loggedIn={Boolean(user)}
-              disabled={disabled}
-              pending={pending}
-              minNextBidCents={auction.min_next_bid_cents || 0}
-              amount={amount}
-              onAmountChange={setAmount}
-              onQuickBid={() => bid(false)}
-              onCustomBid={() => bid(true)}
-              pendingBidState={pendingBidState}
-              onRetryPendingBid={() => bid(false, true)}
-            />
+            {finished ? (
+              <Link to="/" className="app-button button-outline w-full">
+                Ver outros leilões
+                <Icon name="arrow" className="h-4 w-4" />
+              </Link>
+            ) : isSeller ? (
+              <p className="rounded-md bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
+                Você é o comitente deste leilão: acompanha a disputa em tempo
+                real, mas não pode dar lances.
+              </p>
+            ) : user && auction.status === 'scheduled' ? (
+              <p className="rounded-md bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
+                Os lances abrem quando o leilão começar. Lance inicial:{' '}
+                {money(auction.current_price_cents)}.
+              </p>
+            ) : (
+              <FormularioLance
+                loggedIn={Boolean(user)}
+                disabled={disabled}
+                pending={pending}
+                minNextBidCents={auction.min_next_bid_cents || 0}
+                amount={amount}
+                onAmountChange={setAmount}
+                onQuickBid={() => bid(false)}
+                onCustomBid={() => bid(true)}
+                pendingBidState={pendingBidState}
+                onRetryPendingBid={() => bid(false, true)}
+              />
+            )}
 
-            <p className="mt-5 text-[11px] leading-relaxed text-muted-foreground">
-              Lances nos 2 minutos finais prorrogam o leilão em mais 2 minutos.
-            </p>
+            {auction.status === 'running' && (
+              <p className="mt-5 text-[11px] leading-relaxed text-muted-foreground">
+                Lances nos 2 minutos finais prorrogam o leilão em mais 2
+                minutos.
+              </p>
+            )}
           </div>
 
           {canCancel(auction, user) && (
@@ -433,6 +491,18 @@ export function SalaLeilaoPage({ id }: { id: string }) {
           )}
 
           <HistoricoLances loggedIn={Boolean(user)} bids={bids} />
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-lg font-extrabold">Sobre o item</h2>
+          <p className="whitespace-pre-line break-words text-sm leading-7 text-muted-foreground">
+            {auction.description}
+          </p>
+          <div className="mt-7 border-t border-border pt-5 text-xs text-muted-foreground">
+            Início: {new Date(auction.starts_at).toLocaleString('pt-BR')}
+            <br />
+            {finished ? 'Encerrado' : 'Encerramento previsto'}: {endedAt}
+          </div>
         </section>
       </div>
 

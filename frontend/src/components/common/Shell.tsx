@@ -11,7 +11,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [error, setError] = useState('')
 
   return (
-    <>
+    <div className="flex min-h-screen flex-col">
       <header className="bg-header text-header-foreground">
         <div className="page-width flex min-h-20 flex-wrap items-center justify-between gap-4 py-4">
           <Link to="/" className="flex items-center gap-2.5">
@@ -69,7 +69,7 @@ export function Shell({ children }: { children: ReactNode }) {
           {error}
         </div>
       )}
-      {children}
+      <div className="flex-1">{children}</div>
       <footer className="mt-16 border-t border-border">
         <div className="page-width flex flex-wrap items-center justify-between gap-5 py-8 text-[11px] text-muted-foreground">
           <Link
@@ -88,6 +88,6 @@ export function Shell({ children }: { children: ReactNode }) {
           </span>
         </div>
       </footer>
-    </>
+    </div>
   )
 }

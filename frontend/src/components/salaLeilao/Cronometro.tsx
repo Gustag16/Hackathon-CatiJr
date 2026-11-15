@@ -23,12 +23,20 @@ export function Cronometro({
   }, [end])
 
   const s = Math.floor((ms || 0) / 1000)
-  const h = Math.floor(s / 3600)
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
   const m = Math.floor((s % 3600) / 60)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  // O relógio do navegador é só visual: ao zerar, quem muda o status é o servidor.
+  const waiting = ms === 0 && (status === 'running' || status === 'scheduled')
   const text =
     ms === null
       ? '-- : -- : --'
-      : `${String(h).padStart(2, '0')} : ${String(m).padStart(2, '0')} : ${String(s % 60).padStart(2, '0')}`
+      : waiting
+        ? status === 'running'
+          ? 'Encerrando…'
+          : 'Abrindo…'
+        : `${d > 0 ? `${d}d ` : ''}${pad(h)} : ${pad(m)} : ${pad(s % 60)}`
 
   return (
     <div
@@ -40,7 +48,7 @@ export function Cronometro({
     >
       <Icon name="clock" className={large ? 'h-6 w-6' : 'h-4 w-4'} />
       <span className="font-mono font-semibold tabular-nums">{text}</span>
-      {!large && (
+      {!large && !waiting && (
         <span className="ml-auto text-[10px] font-normal">
           {status === 'scheduled' ? 'para começar' : 'restantes'}
         </span>

@@ -235,7 +235,7 @@ export function HomePage() {
                   <span className="live-dot text-success" />
                 )}
                 {label}
-                {tab === value && (
+                {tab === value && !loading && !error && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
                     {totalCount}
                   </span>
@@ -318,6 +318,19 @@ export function HomePage() {
               : 'grid grid-cols-1 gap-5 sm:grid-cols-2'
           }
         >
+          {loading &&
+            results.length === 0 &&
+            Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="auction-card" aria-hidden="true">
+                <div className="skeleton aspect-[4/3] rounded-none" />
+                <div className="space-y-3 p-4">
+                  <div className="skeleton h-4 w-3/4" />
+                  <div className="skeleton h-3 w-1/3" />
+                  <div className="skeleton h-8 w-1/2" />
+                  <div className="skeleton h-10 w-full" />
+                </div>
+              </div>
+            ))}
           {results.map((auction, index) => (
             <LeilaoCard
               key={auction.id}
@@ -332,7 +345,11 @@ export function HomePage() {
           </div>
         )}
 
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6 text-xs text-muted-foreground">
+        <div
+          className={`mt-8 flex-wrap items-center justify-between gap-4 border-t border-border pt-6 text-xs text-muted-foreground ${
+            pages > 1 ? 'flex' : 'hidden'
+          }`}
+        >
           <span>
             Página {safePage} de {pages}
           </span>

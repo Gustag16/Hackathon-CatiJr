@@ -117,6 +117,39 @@ textarea:focus-visible {
   box-shadow: 0 8px 24px color-mix(in oklch, var(--header) 9%, transparent);
 }
 
+.card-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.5;
+  height: 3em; /* sempre 2 linhas: os cartões da mesma fileira ficam alinhados */
+}
+
+.skeleton {
+  background: var(--muted);
+  border-radius: 6px;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+.photo-thumb {
+  overflow: hidden;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.photo-thumb[aria-pressed='true'] {
+  border-color: var(--primary);
+}
+
+.photo-thumb:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -213,6 +246,12 @@ textarea:focus-visible {
 .tab.active {
   border-color: var(--primary);
   color: var(--foreground);
+}
+
+@keyframes skeleton {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 @keyframes urgency {

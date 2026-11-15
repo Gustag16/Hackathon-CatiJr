@@ -18,6 +18,31 @@ function defaultStartsAtLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Título',
+  description: 'Descrição',
+  category: 'Categoria',
+  start_price_cents: 'Lance inicial',
+  starts_at: 'Início',
+  duration_seconds: 'Duração',
+  photos: 'Fotos',
+}
+
+function formatDuration(seconds: number): string {
+  const units: [number, string, string][] = [
+    [86400, 'dia', 'dias'],
+    [3600, 'hora', 'horas'],
+    [60, 'minuto', 'minutos'],
+  ]
+  for (const [size, one, many] of units) {
+    if (seconds % size === 0) {
+      const n = seconds / size
+      return `${n} ${n === 1 ? one : many}`
+    }
+  }
+  return `${seconds} segundos`
+}
+
 export function CriarLeilaoPage() {
   const { user, loading } = useAuth()
   const [config, setConfig] = useState<ConfigResponse | null>(null)
@@ -86,7 +111,11 @@ export function CriarLeilaoPage() {
         }
       }
       body.set('starts_at', startsAtDate.toISOString())
-      const duration = Number(body.get('duration_seconds'))
+      const duration =
+        Number(body.get('duration_value')) * Number(body.get('duration_unit'))
+      body.delete('duration_value')
+      body.delete('duration_unit')
+      body.set('duration_seconds', String(duration))
       if (
         !Number.isInteger(duration) ||
         duration < (limits?.min_duration_seconds ?? 60) ||
@@ -94,7 +123,7 @@ export function CriarLeilaoPage() {
           duration > limits.max_duration_seconds)
       ) {
         throw new Error(
-          `Informe uma duração válida (mínimo de ${limits?.min_duration_seconds ?? 60} segundos).`,
+          `Informe uma duração entre ${formatDuration(limits?.min_duration_seconds ?? 60)} e ${formatDuration(limits?.max_duration_seconds ?? 604800)}.`,
         )
       }
       body.delete('photos')
@@ -195,25 +224,43 @@ export function CriarLeilaoPage() {
               required
             />
           </label>
-          <label>
-            <span className="field-label">Duração</span>
-            <input
-              className="field"
-              type="number"
-              name="duration_seconds"
-              min={config?.limits.min_duration_seconds || 60}
-              max={config?.limits.max_duration_seconds}
-              step="1"
-              defaultValue={86400}
-              required
-            />
+          <div>
+            <label className="field-label" htmlFor="duration-value">
+              Duração
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="duration-value"
+                className="field min-w-0"
+                type="number"
+                name="duration_value"
+                min="1"
+                step="1"
+                defaultValue={24}
+                required
+              />
+              <select
+                className="field"
+                name="duration_unit"
+                aria-label="Unidade da duração"
+                defaultValue="3600"
+              >
+                <option value="60">minutos</option>
+                <option value="3600">horas</option>
+                <option value="86400">dias</option>
+              </select>
+            </div>
             <span className="mt-1 block text-xs text-muted-foreground">
-              Em segundos · 86400 = 24 horas (mínimo 60s)
+              De {formatDuration(config?.limits.min_duration_seconds ?? 60)} a{' '}
+              {formatDuration(config?.limits.max_duration_seconds ?? 604800)}.
             </span>
-          </label>
+          </div>
         </div>
         <label className="block">
-          <span className="field-label">Fotos do item · 3 a 8 imagens</span>
+          <span className="field-label">
+            Fotos do item · {config?.limits.min_photos ?? 3} a{' '}
+            {config?.limits.max_photos ?? 8} imagens
+          </span>
           <input
             className="field"
             type="file"
@@ -223,11 +270,15 @@ export function CriarLeilaoPage() {
             onChange={handlePhotosChange}
           />
           <span className="mt-2 block text-xs text-muted-foreground">
-            JPEG, PNG ou WebP. Até 5 MB por foto.
+            JPEG, PNG ou WebP. Até{' '}
+            {Math.round((config?.limits.max_photo_bytes ?? 5242880) / 1048576)}{' '}
+            MB por foto.
+            {photos.length > 0 &&
+              ` ${photos.length} ${photos.length === 1 ? 'foto selecionada' : 'fotos selecionadas'}.`}
           </span>
         </label>
         {urls.length > 0 && (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
             {urls.map((url, i) => (
               <img
                 key={url}
@@ -239,8 +290,8 @@ export function CriarLeilaoPage() {
           </div>
         )}
         {Object.entries(fields).map(([field, messages]) => (
-          <p key={field} className="text-sm text-destructive">
-            {field}: {messages.join(' ')}
+          <p key={field} role="alert" className="text-sm text-destructive">
+            {FIELD_LABELS[field] ?? field}: {messages.join(' ')}
           </p>
         ))}
         <Button disabled={pending || !config}>

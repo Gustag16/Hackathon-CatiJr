@@ -47,6 +47,11 @@ export function formatLeaderText(
   return 'Aguardando o primeiro lance'
 }
 
+export function bidsLabel(count: number): string {
+  if (count === 0) return 'Sem lances'
+  return count === 1 ? '1 lance' : `${count} lances`
+}
+
 const brlFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',

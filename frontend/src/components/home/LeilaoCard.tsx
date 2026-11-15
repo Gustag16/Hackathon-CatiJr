@@ -1,4 +1,4 @@
-import { categoryLabel, money } from '../../utils/auctionRules'
+import { bidsLabel, categoryLabel, money } from '../../utils/auctionRules'
 import type { Auction } from '../../utils/interfaces/auctionInterface'
 import { Link } from '../common/Router'
 import { Icon, StatusBadge } from '../common/Ui'
@@ -37,7 +37,8 @@ export function LeilaoCard({
         <Link
           to="/auctions/$id"
           params={{ id: a.id }}
-          className="block min-h-11 text-sm font-extrabold leading-relaxed"
+          className="card-title text-sm font-extrabold"
+          title={a.name}
         >
           {a.name}
         </Link>
@@ -62,7 +63,7 @@ export function LeilaoCard({
           </div>
           <span className="mb-1 flex items-center gap-1 text-[10px] text-muted-foreground">
             <Icon name="hammer" className="h-3 w-3" />
-            {a.bid_count} lances
+            {bidsLabel(a.bid_count)}
           </span>
         </div>
         <Link
