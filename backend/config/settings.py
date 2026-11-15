@@ -48,7 +48,9 @@ REDIS_URL = env_str("REDIS_URL", "redis://localhost:6379/0")
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [REDIS_URL]},
+        # socket_timeout None: o channels_redis espera mensagens com um comando bloqueante de
+        # 5 s; o redis-py 8 passou a cortar leituras em 5 s por padrão e derrubava o WebSocket.
+        "CONFIG": {"hosts": [{"address": REDIS_URL, "socket_timeout": None}]},
     }
 }
 

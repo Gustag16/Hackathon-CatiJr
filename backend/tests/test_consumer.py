@@ -280,3 +280,22 @@ def test_mensagem_invalida_responde_error_sem_derrubar(scene):
     ]  # fmt: skip
     assert all(r["message"] for r in replies)
     assert alive["type"] == "pong"
+
+
+def test_conexao_parada_por_mais_de_5s_continua_viva(scene):
+    """Regressão: o redis-py 8 passou a ter timeout de leitura de 5 s por padrão, igual à
+    espera bloqueante do channels_redis. Sem `socket_timeout: None` em CHANNEL_LAYERS, toda
+    sala sem lances caía a cada 5 s ("Timeout reading from redis") e o front reconectava."""
+    import asyncio
+
+    async def scenario():
+        ws = room(scene[2].id, scene[1])
+        assert (await ws.connect())[0]
+        await ws.receive_json_from()
+        await asyncio.sleep(6.5)
+        await ws.send_json_to({"type": "ping"})
+        pong = await ws.receive_json_from()
+        await ws.disconnect()
+        return pong
+
+    assert async_to_sync(scenario)()["type"] == "pong"
